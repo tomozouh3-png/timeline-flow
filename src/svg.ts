@@ -1,6 +1,6 @@
 import type { Project } from "./model.ts";
 import { MM, PT, layout } from "./layout.ts";
-import type { ItemLayout, PeriodLayout, Scene } from "./layout.ts";
+import type { ItemLayout, PeriodLayout, Scene, TextBlock } from "./layout.ts";
 import { runFontPx, runShift } from "./richtext.ts";
 import type { Run } from "./richtext.ts";
 import type { OutlineFont } from "./outline.ts";
@@ -54,11 +54,30 @@ function outlineLine(font: OutlineFont, runs: Run[], x: number, y: number, baseP
 
 const baseline = (top: number, fs: number, lh: number) => top + (lh - fs) / 2 + fs * 0.8;
 
-function arrowHead(tipX: number, tipY: number, dirY: -1 | 1, size: number, color: string): string {
-  // triangle whose tip is at (tipX, tipY) and which points in direction dirY
-  const by = tipY - dirY * size * 1.6;
+/** Arrow head with its tip at `tip`, pointing away from `from`. Returns the head and the point where the shaft should end. */
+function arrowHead(tip: { x: number; y: number }, from: { x: number; y: number }, size: number, color: string): { head: string; base: { x: number; y: number } } {
+  const dx = tip.x - from.x, dy = tip.y - from.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len, uy = dy / len;
+  const bx = tip.x - ux * size * 1.6, by = tip.y - uy * size * 1.6;
   const hw = size * 0.6;
-  return `<polygon points="${num(tipX)},${num(tipY)} ${num(tipX - hw)},${num(by)} ${num(tipX + hw)},${num(by)}" fill="${color}"/>`;
+  const px = -uy * hw, py = ux * hw;
+  return {
+    head: `<polygon points="${num(tip.x)},${num(tip.y)} ${num(bx + px)},${num(by + py)} ${num(bx - px)},${num(by - py)}" fill="${color}"/>`,
+    base: { x: bx, y: by },
+  };
+}
+
+const HIT_PAD = 4;
+/** Invisible (preview-only) rectangle that makes a text block easy to grab. */
+function hitRect(preview: boolean, b: TextBlock | null, minW = 24): string {
+  if (!preview || !b) return "";
+  const w = Math.max(b.w, minW) + HIT_PAD * 2, h = Math.max(b.h, 12) + HIT_PAD * 2;
+  return `<rect class="hit" x="${num(b.x - w / 2)}" y="${num(b.top - HIT_PAD)}" width="${num(w)}" height="${num(h)}" rx="3" fill="transparent"/>`;
+}
+
+function blockSvg(ctx: Ctx, b: TextBlock, lineH: number, fontPx: number): string {
+  return b.lines.map((runs, i) => textLine(ctx, runs, b.x, baseline(b.top + i * lineH, fontPx, lineH), fontPx, "middle")).join("");
 }
 
 function itemSvg(ctx: Ctx, p: Project, sc: Scene, it: ItemLayout, idx: number, preview: boolean): string {
@@ -66,36 +85,28 @@ function itemSvg(ctx: Ctx, p: Project, sc: Scene, it: ItemLayout, idx: number, p
   const id = `event-${idx + 1}`;
   const parts: string[] = [];
   const attr = preview ? ` data-ev="${it.ev.id}"` : "";
+  const part = (name: string) => (preview ? ` data-part="${name}"` : "");
   const cw = s.connector.widthPt * PT;
   const ccolor = s.axis.color;
 
-  // time label (opposite side of the box)
-  const n = it.labelLines.length;
-  const labelTop = it.side === "below" ? sc.axisY - sc.labelGap - n * sc.llh : sc.axisY + sc.labelGap;
-  const lab = it.labelLines
-    .map((runs, i) => textLine(ctx, runs, it.x, baseline(labelTop + i * sc.llh, sc.lfs, sc.llh), sc.lfs, "middle"))
-    .join("");
-  parts.push(`<g id="${id}-label">${lab}</g>`);
+  // time label
+  parts.push(`<g id="${id}-label"${part("label")}>${hitRect(preview, it.label)}${blockSvg(ctx, it.label, sc.llh, sc.lfs)}</g>`);
 
-  // connector
+  // connector: from the axis position to the box edge (slanted when the box has been moved sideways)
   if (s.connector.style !== "none") {
-    const edgeY = it.side === "below" ? it.box.y : it.box.y + it.box.h;
-    const head = Math.max(5, cw * 4);
-    const dir: -1 | 1 = it.side === "below" ? -1 : 1; // direction pointing toward the axis
-    let line: string, tip: string;
-    if (s.connector.style === "toAxis") {
-      // arrow tip sits exactly on the axis
-      const lineEnd = sc.axisY - dir * head * 1.6;
-      line = `<line x1="${num(it.x)}" y1="${num(edgeY)}" x2="${num(it.x)}" y2="${num(lineEnd)}"/>`;
-      tip = arrowHead(it.x, sc.axisY, dir, head, ccolor);
-    } else {
-      // arrow tip sits on the box edge
-      const lineEnd = edgeY + dir * head * 1.6;
-      line = `<line x1="${num(it.x)}" y1="${num(sc.axisY)}" x2="${num(it.x)}" y2="${num(lineEnd)}"/>`;
-      tip = arrowHead(it.x, edgeY, (dir * -1) as -1 | 1, head, ccolor);
-    }
+    const b = it.box;
+    const boxBelow = b.y + b.h / 2 > sc.axisY;
+    const edgeY = boxBelow ? b.y : b.y + b.h;
+    const m = Math.min(8, b.w / 2);
+    const ax = Math.min(Math.max(it.x, b.x + m), b.x + b.w - m);
+    const axis = { x: it.x, y: sc.axisY };
+    const edge = { x: ax, y: edgeY };
+    const size = Math.max(5, cw * 4);
+    const toAxis = s.connector.style === "toAxis";
+    const hd = toAxis ? arrowHead(axis, edge, size, ccolor) : arrowHead(edge, axis, size, ccolor);
+    const from = toAxis ? edge : axis;
     parts.push(
-      `<g id="${id}-connector"><g stroke="${ccolor}" stroke-width="${num(cw)}" fill="none">${line}</g>${tip}</g>`
+      `<g id="${id}-connector"><g stroke="${ccolor}" stroke-width="${num(cw)}" fill="none"><line x1="${num(from.x)}" y1="${num(from.y)}" x2="${num(hd.base.x)}" y2="${num(hd.base.y)}"/></g>${hd.head}</g>`
     );
   }
 
@@ -110,7 +121,7 @@ function itemSvg(ctx: Ctx, p: Project, sc: Scene, it: ItemLayout, idx: number, p
       `<rect class="box" x="${num(b.x)}" y="${num(b.y)}" width="${num(b.w)}" height="${num(b.h)}" rx="${num(r)}" ry="${num(r)}" fill="${st.fill}" stroke="${st.stroke}" stroke-width="${num(st.strokeWidthPt * PT)}"${dash}/>`
     );
   } else if (preview) {
-    box.push(`<rect class="box" x="${num(b.x)}" y="${num(b.y)}" width="${num(b.w)}" height="${num(b.h)}" fill="none" stroke="none"/>`);
+    box.push(`<rect class="box" x="${num(b.x)}" y="${num(b.y)}" width="${num(b.w)}" height="${num(b.h)}" fill="none" stroke="none" pointer-events="all"/>`);
   }
   const textH = it.textLines.length * sc.lh;
   const top = s.box.valign === "middle" ? b.y + (b.h - textH) / 2 : b.y + s.box.padY;
@@ -121,11 +132,16 @@ function itemSvg(ctx: Ctx, p: Project, sc: Scene, it: ItemLayout, idx: number, p
       .map((runs, i) => textLine(ctx, runs, tx, baseline(top + i * sc.lh, sc.fs, sc.lh), sc.fs, left ? "start" : "middle"))
       .join("")
   );
-  parts.push(`<g id="${id}-box">${box.join("")}</g>`);
+  parts.push(`<g id="${id}-box"${part("box")}>${box.join("")}</g>`);
+
+  // note (free text just outside the box)
+  if (it.note) {
+    parts.push(`<g id="${id}-note"${part("note")}>${hitRect(preview, it.note)}${blockSvg(ctx, it.note, sc.llh, sc.lfs)}</g>`);
+  }
   return `<g id="${id}"${attr}>${parts.join("")}</g>`;
 }
 
-function periodSvg(ctx: Ctx, p: Project, sc: Scene, q: PeriodLayout, idx: number): string {
+function periodSvg(ctx: Ctx, p: Project, sc: Scene, q: PeriodLayout, idx: number, preview: boolean): string {
   const sw = num(p.settings.box.strokeWidthPt * PT);
   const { x0, x1, y, h } = q;
   const shape = p.settings.period.endShape;
@@ -143,10 +159,11 @@ function periodSvg(ctx: Ctx, p: Project, sc: Scene, q: PeriodLayout, idx: number
       ? textLine(ctx, q.runs, (x0 + x1) / 2, by, sc.lfs, "middle")
       : textLine(ctx, q.runs, x1 + 6, by, sc.lfs, "start")
     : "";
-  return `<g id="period-${idx + 1}">${body}${text}</g>`;
+  const pa = preview ? ` data-period="${q.p.id}" data-part="period"` : "";
+  return `<g id="period-${idx + 1}"${pa}>${body}${text}</g>`;
 }
 
-export function buildSvg(p: Project, opts: { preview?: boolean; scene?: Scene; font?: OutlineFont | null } = {}): string {
+export function buildSvg(p: Project, opts: { preview?: boolean; scene?: Scene; font?: OutlineFont | null; freeHint?: string } = {}): string {
   const preview = !!opts.preview;
   const ctx: Ctx = { font: opts.font ?? null };
   const sc = opts.scene ?? layout(p);
@@ -185,7 +202,7 @@ export function buildSvg(p: Project, opts: { preview?: boolean; scene?: Scene; f
   const wmm = num(sc.W / MM), hmm = num(sc.H / MM);
   const body = sc.items.map((it, i) => itemSvg(ctx, p, sc, it, i, preview)).join("\n");
   const periods = sc.periods.length
-    ? `<g id="periods">${sc.periods.map((q, i) => periodSvg(ctx, p, sc, q, i)).join("")}</g>\n`
+    ? `<g id="periods">${sc.periods.map((q, i) => periodSvg(ctx, p, sc, q, i, preview)).join("")}</g>\n`
     : "";
   const legend = sc.legend.length
     ? `<g id="legend">${sc.legend
@@ -197,6 +214,19 @@ export function buildSvg(p: Project, opts: { preview?: boolean; scene?: Scene; f
         })
         .join("")}</g>\n`
     : "";
+  const texts = sc.texts.length
+    ? `<g id="free-texts">${sc.texts
+        .map((f, i) => {
+          const pa = preview ? ` data-free="${f.t.id}" data-part="free"` : "";
+          return `<g id="text-${i + 1}"${pa}>${hitRect(preview, f.block, 40)}${blockSvg(ctx, f.block, sc.lh, sc.fs)}</g>`;
+        })
+        .join("")}</g>\n`
+    : "";
+  // preview-only guide for the blank space reserved at the bottom (never exported)
+  const guide =
+    preview && sc.freeSpace >= 12
+      ? `<g class="free-guide" pointer-events="none"><rect x="6" y="${num(sc.H - sc.freeSpace - 4)}" width="${num(sc.W - 12)}" height="${num(sc.freeSpace)}" rx="6" fill="none" stroke="#9ca3af" stroke-width="1" stroke-dasharray="4 4"/>${opts.freeHint ? `<text x="${num(sc.W / 2)}" y="${num(sc.H - 12)}" text-anchor="middle" font-size="10" fill="#9ca3af">${esc(opts.freeHint)}</text>` : ""}</g>\n`
+      : "";
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${num(sc.W)} ${num(sc.H)}" width="${wmm}mm" height="${hmm}mm" font-family="${esc(s.fontFamily)}">\n` +
     `<title>Experiment timeline</title>\n` +
@@ -206,6 +236,8 @@ export function buildSvg(p: Project, opts: { preview?: boolean; scene?: Scene; f
     body +
     `\n` +
     legend +
+    texts +
+    guide +
     `</svg>\n`
   );
 }

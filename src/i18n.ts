@@ -47,6 +47,10 @@ const dict = {
     fontMissing: "同梱フォントが見つかりません。「フォントファイルを選択」で .ttf/.otf/.woff を読み込んでください。",
     fontFail: "フォントを読み込めませんでした。",
     outlineHint: "文字をパスに変換します(フォント未インストール環境でも崩れません)。元の文字列は各要素のaria-labelに残ります。",
+    freeSpace: "下の自由スペース(px)", note: "補足(吹き出しの下)", resetPos: "位置をリセット",
+    texts: "自由テキスト", addText: "+ 自由テキスト追加", textHint: "図の余白をダブルクリックしても追加できます。ドラッグで移動、Deleteで削除。",
+    freeHint: "自由スペース:ダブルクリックで文字を追加", textPlaceholder: "テキスト",
+    dragHint: "ボックス・時間ラベル・補足・自由テキストはドラッグで移動できます(Shiftで水平/垂直に固定)。ダブルクリックで図の上から直接編集、余白をダブルクリックで自由テキストを追加します。",
     lang: "言語",
   },
   en: {
@@ -95,6 +99,10 @@ const dict = {
     fontMissing: "The bundled font was not found. Use \"Choose a font file\" to load a .ttf/.otf/.woff.",
     fontFail: "Could not load the font.",
     outlineHint: "Converts text to paths so it renders identically without the font installed. The original string stays in each element's aria-label.",
+    freeSpace: "Free space below (px)", note: "Note (below the box)", resetPos: "Reset positions",
+    texts: "Free text", addText: "+ Add free text", textHint: "You can also double-click blank space on the figure. Drag to move, Delete to remove.",
+    freeHint: "Free space: double-click to add text", textPlaceholder: "Text",
+    dragHint: "Drag boxes, time labels, notes and free text to move them (hold Shift to lock horizontal/vertical). Double-click to edit directly on the figure; double-click blank space to add free text.",
     lang: "Language",
   },
 } as const;

@@ -1,4 +1,4 @@
-import type { BoxStyle, EventItem, Period, Project } from "./model.ts";
+import type { BoxStyle, EventItem, FreeText, Period, Project } from "./model.ts";
 import { parseLine } from "./richtext.ts";
 import type { Run } from "./richtext.ts";
 import { lineWidth } from "./measure.ts";
@@ -7,17 +7,31 @@ import { labelLines } from "./labels.ts";
 export const PT = 96 / 72; // pt -> px (96 dpi user units)
 export const MM = 96 / 25.4; // mm -> px
 
+/** A block of text. x is the horizontal centre, top is the top edge. */
+export interface TextBlock {
+  lines: Run[][];
+  x: number;
+  top: number;
+  w: number;
+  h: number;
+}
+
 export interface ItemLayout {
   ev: EventItem;
-  x: number;
+  x: number; // position on the time axis
   side: "above" | "below";
   tier: 0 | 1;
   style: BoxStyle;
-  box: { x: number; y: number; w: number; h: number };
+  box: { x: number; y: number; w: number; h: number }; // final, including manual offset
   textLines: Run[][];
-  labelLines: Run[][];
-  labelW: number;
+  label: TextBlock;
+  note: TextBlock | null;
   overlap: boolean;
+}
+
+export interface FreeLayout {
+  t: FreeText;
+  block: TextBlock;
 }
 
 export interface PeriodLayout {
@@ -52,6 +66,8 @@ export interface Scene {
   items: ItemLayout[];
   periods: PeriodLayout[];
   legend: LegendItem[];
+  texts: FreeLayout[];
+  freeSpace: number;
   swatchW: number;
   swatchH: number;
   fs: number;
@@ -70,6 +86,9 @@ interface Prep {
   w: number;
   h: number;
   labelW: number;
+  noteLines: Run[][];
+  noteW: number;
+  noteH: number;
 }
 
 interface Placed {
@@ -80,6 +99,7 @@ interface Placed {
   overlap: boolean;
 }
 
+const NOTE_GAP = 4;
 const LABEL_PAD = 4;
 const GX = 8; // minimum horizontal gap between boxes
 const TIER_GAP = 10;
@@ -117,7 +137,9 @@ export function layout(p: Project): Scene {
     const h = Math.max(s.box.minHeight, textLines.length * lh + 2 * s.box.padY);
     const labels = labelLines(p, ev).map(parseLine);
     const labelW = Math.max(0, ...labels.map((r) => lineWidth(r, lfs, fam)));
-    return { ev, style, textLines, labels, w, h, labelW };
+    const noteLines = ev.note.trim() ? ev.note.split("\n").map(parseLine) : [];
+    const noteW = Math.max(0, ...noteLines.map((r) => lineWidth(r, lfs, fam)));
+    return { ev, style, textLines, labels, w, h, labelW, noteLines, noteW, noteH: noteLines.length * llh };
   });
   if (s.box.uniformHeight) {
     const hm = Math.max(0, ...preps.map((q) => q.h));
@@ -138,7 +160,7 @@ export function layout(p: Project): Scene {
     t - breaks.reduce((a, b) => a + Math.min(Math.max(t - b.from, 0), b.to - b.from) * (1 - BREAK_KEEP / (b.to - b.from)), 0);
   const wMin = warp(tAllMin), wMax = warp(tAllMax);
 
-  const half = (q: Prep) => Math.max(q.w, q.labelW) / 2;
+  const half = (q: Prep) => Math.max(q.w, q.labelW, q.noteW) / 2;
   let padL = n && preps[0].ev.t <= tAllMin ? half(preps[0]) : 0;
   let padR = n && preps[n - 1].ev.t >= tAllMax ? half(preps[n - 1]) : 0;
 
@@ -181,7 +203,7 @@ export function layout(p: Project): Scene {
     preps.forEach((q, i) => {
       const x = xOf(q, i);
       const left = x - q.w / 2;
-      const wf = Math.max(q.w, q.labelW); // footprint incl. the time label
+      const wf = Math.max(q.w, q.labelW, q.noteW); // footprint incl. time label and note
       const fits = (side: "above" | "below", tier: 0 | 1): boolean => {
         const opp = side === "above" ? "below" : "above";
         if (x - wf / 2 < (last[side + tier] ?? -Infinity) + GX) return false;
@@ -211,8 +233,8 @@ export function layout(p: Project): Scene {
       conn[c.side].push(x);
       labs[c.side === "above" ? "below" : "above"].push({ l: x - q.labelW / 2, r: x + q.labelW / 2 });
       placed.push({ x, side: c.side, tier: c.tier, left, overlap });
-      minX = Math.min(minX, left, x - q.labelW / 2);
-      maxX = Math.max(maxX, left + q.w, x + q.labelW / 2);
+      minX = Math.min(minX, left, x - q.labelW / 2, x - q.noteW / 2);
+      maxX = Math.max(maxX, left + q.w, x + q.labelW / 2, x + q.noteW / 2);
     });
     return { placed, xa, xb, minX, maxX, mapT, xOfW };
   };
@@ -239,7 +261,7 @@ export function layout(p: Project): Scene {
   const extent = { above: 8, below: 8 };
   preps.forEach((q, i) => {
     const pl = res.placed[i];
-    extent[pl.side] = Math.max(extent[pl.side], offsetOf(pl.tier, pl.side) + q.h);
+    extent[pl.side] = Math.max(extent[pl.side], offsetOf(pl.tier, pl.side) + q.h + (q.noteH ? NOTE_GAP + q.noteH : 0));
     const opp = pl.side === "above" ? "below" : "above"; // label sits on the opposite side of the axis
     extent[opp] = Math.max(extent[opp], q.labels.length * llh + LABEL_GAP);
   });
@@ -268,7 +290,7 @@ export function layout(p: Project): Scene {
   const lanes = laneRight.length;
   const bandH = lanes ? lanes * (ph + LANE_GAP) - LANE_GAP : 0;
   const topBand = s.period.position === "top" && lanes ? bandH + BAND_GAP : 0;
-  const axisY = MY + topBand + extent.above;
+  let axisY = MY + topBand + extent.above;
   let yCursor = axisY + extent.below;
   const bandTop = s.period.position === "top" ? MY : yCursor + BAND_GAP;
   for (const q of pl) q.y = bandTop + q.y * (ph + LANE_GAP);
@@ -293,19 +315,64 @@ export function layout(p: Project): Scene {
     for (const it of legend) it.y += top;
     yCursor = top + legendH;
   }
-  const H = yCursor + MY;
 
   const items: ItemLayout[] = preps.map((q, i) => {
     const pp = res.placed[i];
+    const ev = q.ev;
     const off = offsetOf(pp.tier, pp.side);
-    const y = pp.side === "below" ? axisY + off : axisY - off - q.h;
-    return {
-      ev: q.ev, x: pp.x, side: pp.side, tier: pp.tier, style: q.style,
-      box: { x: pp.left, y, w: q.w, h: q.h },
-      textLines: q.textLines, labelLines: q.labels, labelW: q.labelW, overlap: pp.overlap,
+    const baseY = pp.side === "below" ? axisY + off : axisY - off - q.h;
+    const box = { x: pp.left + ev.dx, y: baseY + ev.dy, w: q.w, h: q.h };
+    const nl = q.labels.length;
+    const label: TextBlock = {
+      lines: q.labels,
+      x: pp.x + ev.ldx,
+      top: (pp.side === "below" ? axisY - LABEL_GAP - nl * llh : axisY + LABEL_GAP) + ev.ldy,
+      w: q.labelW,
+      h: nl * llh,
     };
+    let note: TextBlock | null = null;
+    if (q.noteLines.length) {
+      note = {
+        lines: q.noteLines,
+        x: box.x + box.w / 2 + ev.ndx,
+        top: (pp.side === "below" ? box.y + box.h + NOTE_GAP : box.y - NOTE_GAP - q.noteH) + ev.ndy,
+        w: q.noteW,
+        h: q.noteH,
+      };
+    }
+    return { ev, x: pp.x, side: pp.side, tier: pp.tier, style: q.style, box, textLines: q.textLines, label, note, overlap: pp.overlap };
   });
 
+  // free texts (x absolute, y relative to the axis) are laid out after the vertical shift below
+  const texts: FreeLayout[] = p.texts.map((t) => {
+    const lines = t.text.split("\n").map(parseLine);
+    const w = Math.max(0, ...lines.map((r) => lineWidth(r, fs, fam)));
+    return { t, block: { lines, x: t.x, top: axisY + t.y, w, h: lines.length * lh } };
+  });
+
+  // ---- keep everything inside the top edge; reserve the free space below ----
+  let minY = Infinity, maxY = -Infinity;
+  for (const it of items) {
+    const blocks = [it.label, ...(it.note ? [it.note] : [])];
+    minY = Math.min(minY, it.box.y, ...blocks.map((b) => b.top));
+    maxY = Math.max(maxY, it.box.y + it.box.h, ...blocks.map((b) => b.top + b.h));
+  }
+  const shift = isFinite(minY) && minY < MY ? MY - minY : 0;
+  if (shift) {
+    axisY += shift;
+    yCursor += shift;
+    maxY += shift;
+    for (const it of items) {
+      it.box.y += shift;
+      it.label.top += shift;
+      if (it.note) it.note.top += shift;
+    }
+    for (const q of pl) q.y += shift;
+    for (const l of legend) l.y += shift;
+    for (const f of texts) f.block.top += shift;
+  }
+  let H = Math.max(yCursor, isFinite(maxY) ? maxY : 0) + MY + Math.max(0, s.freeSpace);
+  for (const f of texts) H = Math.max(H, f.block.top + f.block.h + MY);
   // ---- axis break marks & ticks ----
   const breakXs: number[] = [];
   for (const b of breaks) {
@@ -326,7 +393,7 @@ export function layout(p: Project): Scene {
     W, H, axisY,
     axisStartX: MX,
     axisEndX: res.xb + ext,
-    breakXs, tickXs, items, periods: pl, legend, swatchW, swatchH,
+    breakXs, tickXs, items, periods: pl, legend, texts, freeSpace: Math.max(0, s.freeSpace), swatchW, swatchH,
     fs, lfs, lh, llh, labelGap: LABEL_GAP,
     warnings: items.filter((i) => i.overlap).length,
   };

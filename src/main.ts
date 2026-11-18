@@ -1,5 +1,7 @@
 import "./styles.css";
-import { newBreak, newCategory, newEvent, newPeriod, parseProject, sampleProject } from "./model.ts";
+import { newBreak, newCategory, newEvent, newPeriod, newText, parseProject, sampleProject } from "./model.ts";
+import { setupInteractions } from "./interact.ts";
+import type { Interact } from "./interact.ts";
 import type { Project, EventItem } from "./model.ts";
 import { setMeasurer, useCanvasMeasurer } from "./measure.ts";
 import { loadBundledFont, parseFont } from "./outline.ts";
@@ -7,6 +9,7 @@ import type { OutlineFont } from "./outline.ts";
 import { parseTsv } from "./tsv.ts";
 import { templates } from "./templates.ts";
 import { layout } from "./layout.ts";
+import type { Scene } from "./layout.ts";
 import { buildSvg } from "./svg.ts";
 import { History } from "./history.ts";
 import { detectLang, getLang, overlapWarn, saveLang, setLang, t } from "./i18n.ts";
@@ -27,6 +30,11 @@ let listEl!: HTMLElement;
 let undoBtn!: HTMLButtonElement;
 let redoBtn!: HTMLButtonElement;
 let saveTimer = 0;
+let svgHost!: HTMLElement;
+let interact: Interact | null = null;
+let selectedFree: string | null = null;
+let textsRebuild: () => void = () => {};
+let lastScene: Scene | null = null;
 let outlineFont: OutlineFont | null = null;
 let fontStatusEl: HTMLElement | null = null;
 let tsvDialog!: HTMLDialogElement;
@@ -70,9 +78,11 @@ function edit(key = ""): void {
 
 function refresh(): void {
   const scene = layout(project);
-  previewEl.innerHTML = buildSvg(project, { preview: true, scene });
+  lastScene = scene;
+  svgHost.innerHTML = buildSvg(project, { preview: true, scene, freeHint: t("freeHint") });
   previewEl.classList.toggle("checker", project.settings.background === "transparent");
   markSelected();
+  interact?.positionEditor();
   warnEl.textContent = scene.warnings ? overlapWarn(scene.warnings) : project.events.length ? "" : t("empty");
   undoBtn.disabled = !hist.canUndo();
   redoBtn.disabled = !hist.canRedo();
@@ -82,6 +92,7 @@ function refresh(): void {
 function markSelected(): void {
   previewEl.querySelectorAll(".tl-sel").forEach((e) => e.classList.remove("tl-sel"));
   listEl.querySelectorAll(".ev.sel").forEach((e) => e.classList.remove("sel"));
+  if (selectedFree) previewEl.querySelector(`[data-free="${selectedFree}"]`)?.classList.add("tl-sel");
   if (!selectedId) return;
   previewEl.querySelector(`[data-ev="${selectedId}"]`)?.classList.add("tl-sel");
   listEl.querySelector(`.ev[data-id="${selectedId}"]`)?.classList.add("sel");
@@ -93,7 +104,6 @@ function select(id: string, scroll: boolean): void {
   if (scroll) {
     const row = listEl.querySelector(`.ev[data-id="${id}"]`);
     row?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    (row?.querySelector("textarea") as HTMLTextAreaElement | null)?.focus();
   }
 }
 
@@ -184,6 +194,7 @@ function buildSettings(): HTMLElement {
       numIn("fontSizePt", t("fontSize"), 0.5, 4),
       numIn("labelFontSizePt", t("labelFontSize"), 0.5, 4),
       selIn("background", t("background"), [["transparent", t("bgTransparent")], ["white", t("bgWhite")]]),
+      numIn("freeSpace", t("freeSpace"), 4, 0),
       chkIn("alternate", t("alternate"))
     ),
     group(t("gAxis"), true,
@@ -325,9 +336,14 @@ function buildRow(ev: EventItem, idx: number): HTMLElement {
     renderList();
   });
 
-  const ta = h("textarea", { rows: 2, value: ev.text, spellcheck: "false" });
+  const ta = h("textarea", { rows: 2, value: ev.text, spellcheck: "false", class: "ta-text" });
   ta.addEventListener("input", () => { ev.text = ta.value; edit("x:" + ev.id); });
   trackRt(ta);
+  const noteTa = h("textarea", { rows: 1, value: ev.note, spellcheck: "false", class: "ta-note", placeholder: t("note") });
+  noteTa.addEventListener("input", () => { ev.note = noteTa.value; edit("n:" + ev.id); });
+  trackRt(noteTa);
+  const resetPos = h("button", { type: "button", class: "link" }, t("resetPos"));
+  resetPos.addEventListener("click", () => { ev.dx = ev.dy = ev.ldx = ev.ldy = ev.ndx = ev.ndy = 0; edit(); });
 
   // style details
   const lab = h("input", { type: "text", value: ev.labelOverride, placeholder: "Day 2" });
@@ -366,6 +382,7 @@ function buildRow(ev: EventItem, idx: number): HTMLElement {
       h("span", { class: "grow" }),
       dup, del),
     ta,
+    noteTa,
     h("details", { class: "more" },
       h("summary", {}, t("style")),
       h("div", { class: "grid" },
@@ -375,7 +392,7 @@ function buildRow(ev: EventItem, idx: number): HTMLElement {
         field(t("strokeWidth"), sw),
         h("label", { class: "fld chk" }, dashed, h("span", {}, t("dashed"))),
         field(t("shape"), shape),
-        reset))
+        reset, resetPos))
   );
   return row;
 }
@@ -562,6 +579,40 @@ async function exportOutline(): Promise<void> {
   }
 }
 
+
+// ---------- free texts ----------
+function syncLists(): void {
+  for (const row of listEl.querySelectorAll<HTMLElement>(".ev")) {
+    const ev = project.events.find((e) => e.id === row.dataset.id);
+    if (!ev) continue;
+    const a = row.querySelector<HTMLTextAreaElement>("textarea.ta-text");
+    const b = row.querySelector<HTMLTextAreaElement>("textarea.ta-note");
+    if (a && a.value !== ev.text) a.value = ev.text;
+    if (b && b.value !== ev.note) b.value = ev.note;
+  }
+}
+
+function buildTexts(): HTMLElement {
+  const el = section(t("texts"), t("textHint"), t("addText"),
+    (box) => box.replaceChildren(...project.texts.map((f) => {
+      const ta = h("textarea", { rows: 1, value: f.text, spellcheck: "false", placeholder: t("textPlaceholder") });
+      ta.addEventListener("input", () => { f.text = ta.value; edit("ft:" + f.id); });
+      trackRt(ta);
+      const del = h("button", { type: "button", class: "ico danger", title: t("delete") }, "✕");
+      del.addEventListener("click", () => { project.texts = project.texts.filter((x) => x !== f); if (selectedFree === f.id) selectedFree = null; edit(); textsRebuild(); });
+      return h("div", { class: "ev" }, h("div", { class: "ev-head" }, h("span", { class: "grow" }), del), ta);
+    })),
+    () => {
+      const sc = lastScene ?? layout(project);
+      const f = newText(Math.round(sc.W / 2), Math.round(sc.H - sc.freeSpace / 2 - sc.axisY - sc.lh / 2), t("textPlaceholder"));
+      project.texts.push(f);
+      selectedFree = f.id;
+      edit();
+    });
+  textsRebuild = () => (el.querySelector(".sublist") as unknown as { _render: () => void })._render();
+  return el;
+}
+
 // ---------- shell ----------
 function btn(label: string, fn: () => void, cls = ""): HTMLButtonElement {
   const b = h("button", { type: "button", class: cls }, label);
@@ -595,10 +646,19 @@ function renderAll(): void {
     h("option", { value: "en", selected: getLang() === "en" }, "English"));
   langSel.addEventListener("change", () => { setLang(langSel.value as Lang); saveLang(getLang()); renderAll(); });
 
-  previewEl = h("div", { id: "preview" });
-  previewEl.addEventListener("click", (e) => {
-    const g = (e.target as Element).closest("[data-ev]");
-    if (g) select(g.getAttribute("data-ev")!, true);
+  svgHost = h("div", { class: "svghost" });
+  previewEl = h("div", { id: "preview" }, svgHost);
+  interact = setupInteractions({
+    host: previewEl,
+    project: () => project,
+    scene: () => lastScene ?? layout(project),
+    edit,
+    refresh,
+    commit: (key) => hist.commit(project, key),
+    selectEvent: (id) => { selectedId = id; markSelected(); if (id) listEl.querySelector(`.ev[data-id="${id}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" }); },
+    selectFree: (id) => { selectedFree = id; markSelected(); },
+    syncLists,
+    rebuildTexts: () => textsRebuild(),
   });
   warnEl = h("div", { class: "warn" });
   listEl = h("div", { class: "list" });
@@ -646,6 +706,7 @@ function renderAll(): void {
         h("p", { class: "hint" }, t("markupHelp")),
         listEl,
         h("div", { class: "row-actions" }, addBtn, sortBtn),
+        buildTexts(),
         buildPeriods(),
         buildCategories(),
         buildBreaks(),
@@ -653,7 +714,7 @@ function renderAll(): void {
         tsvDialog),
       h("section", { class: "stage" },
         previewEl, warnEl,
-        h("p", { class: "hint" }, t("previewHint")),
+        h("p", { class: "hint" }, t("dragHint")),
         h("p", { class: "hint" }, "🔒 " + t("privacy"))))
   );
   renderList();
@@ -666,6 +727,14 @@ renderAll();
 window.addEventListener("keydown", (e) => {
   const tag = (e.target as HTMLElement).tagName;
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  if ((e.key === "Delete" || e.key === "Backspace") && selectedFree) {
+    e.preventDefault();
+    project.texts = project.texts.filter((x) => x.id !== selectedFree);
+    selectedFree = null;
+    edit();
+    textsRebuild();
+    return;
+  }
   if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z" && e.key.toLowerCase() !== "y") return;
   e.preventDefault();
   restore(e.key.toLowerCase() === "y" || e.shiftKey ? hist.redo() : hist.undo());

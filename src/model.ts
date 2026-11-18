@@ -16,7 +16,22 @@ export interface EventItem {
   labelOverride: string;
   side: Side;
   category: string; // Category id or ""
+  note: string; // free text shown just outside the box (below it, or above for boxes over the axis)
+  dx: number; // manual offsets (px) from the automatic position; dragged on the figure
+  dy: number;
+  ldx: number; // time label offset
+  ldy: number;
+  ndx: number; // note offset
+  ndy: number;
   style: Partial<BoxStyle>;
+}
+
+/** Free text placed anywhere on the figure. x is absolute (px); y is relative to the time axis. */
+export interface FreeText {
+  id: string;
+  x: number;
+  y: number;
+  text: string;
 }
 
 export interface Category {
@@ -85,6 +100,7 @@ export interface Settings {
     endShape: "square" | "round" | "arrow";
   };
   legend: boolean;
+  freeSpace: number; // extra blank space (px) reserved below the figure for free writing
 }
 
 export interface Project {
@@ -94,6 +110,7 @@ export interface Project {
   periods: Period[];
   categories: Category[];
   breaks: AxisBreak[];
+  texts: FreeText[];
 }
 
 export function defaultSettings(): Settings {
@@ -132,6 +149,7 @@ export function defaultSettings(): Settings {
     alternate: true,
     period: { position: "bottom", height: 22, fill: "#fde68a", stroke: "#92400e", endShape: "square" },
     legend: true,
+    freeSpace: 56,
   };
 }
 
@@ -142,7 +160,11 @@ export function uid(): string {
 }
 
 export function newEvent(t: number, text = ""): EventItem {
-  return { id: uid(), t, text, labelOverride: "", side: "auto", category: "", style: {} };
+  return { id: uid(), t, text, labelOverride: "", side: "auto", category: "", note: "", dx: 0, dy: 0, ldx: 0, ldy: 0, ndx: 0, ndy: 0, style: {} };
+}
+
+export function newText(x: number, y: number, text = ""): FreeText {
+  return { id: uid(), x, y, text };
 }
 
 export const CATEGORY_COLORS: [string, string][] = [
@@ -175,6 +197,7 @@ export function sampleProject(): Project {
     periods: [],
     categories: [],
     breaks: [],
+    texts: [],
   };
 }
 
@@ -193,6 +216,10 @@ export function deepMerge<T>(base: T, over: unknown): T {
   return out as T;
 }
 
+function numOr(v: unknown, d = 0): number {
+  return typeof v === "number" && isFinite(v) ? v : d;
+}
+
 export function parseProject(json: string): Project {
   const raw = JSON.parse(json);
   if (!isObj(raw) || !Array.isArray(raw.events)) throw new Error("invalid project");
@@ -205,6 +232,8 @@ export function parseProject(json: string): Project {
       labelOverride: typeof o.labelOverride === "string" ? o.labelOverride : "",
       side: o.side === "above" || o.side === "below" ? o.side : "auto",
       category: typeof o.category === "string" ? o.category : "",
+      note: typeof o.note === "string" ? o.note : "",
+      dx: numOr(o.dx), dy: numOr(o.dy), ldx: numOr(o.ldx), ldy: numOr(o.ldy), ndx: numOr(o.ndx), ndy: numOr(o.ndy),
       style: isObj(o.style) ? (o.style as Partial<BoxStyle>) : {},
     };
   });
@@ -218,5 +247,6 @@ export function parseProject(json: string): Project {
     id: str(o.id) || uid(), name: str(o.name, "category " + (i + 1)), fill: str(o.fill, "#dbeafe"), stroke: str(o.stroke, "#1d4ed8"),
   }));
   const breaks: AxisBreak[] = arr(raw.breaks).map((o) => ({ id: str(o.id) || uid(), from: n(o.from, 0), to: n(o.to, 1) }));
-  return { version: 1, settings: deepMerge(defaultSettings(), raw.settings), events, periods, categories, breaks };
+  const texts: FreeText[] = arr(raw.texts).map((o) => ({ id: str(o.id) || uid(), x: n(o.x, 0), y: n(o.y, 0), text: str(o.text) }));
+  return { version: 1, settings: deepMerge(defaultSettings(), raw.settings), events, periods, categories, breaks, texts };
 }
