@@ -14,6 +14,7 @@ import { buildSvg } from "./svg.ts";
 import { History } from "./history.ts";
 import { detectLang, getLang, overlapWarn, saveLang, setLang, t } from "./i18n.ts";
 import type { Lang } from "./i18n.ts";
+import { deleteLib, getCurrent, listLib, renameLib, saveLib, setCurrent } from "./library.ts";
 import { dateOf, supportsDate, tOfDate } from "./labels.ts";
 
 const STORE_KEY = "timelineflow:project:v1";
@@ -38,6 +39,8 @@ let lastScene: Scene | null = null;
 let outlineFont: OutlineFont | null = null;
 let fontStatusEl: HTMLElement | null = null;
 let tsvDialog!: HTMLDialogElement;
+let libDialog!: HTMLDialogElement;
+let curFileEl: HTMLElement | null = null;
 
 function loadStored(): Project | null {
   try {
@@ -360,7 +363,7 @@ function buildRow(ev: EventItem, idx: number): HTMLElement {
   noteTa.addEventListener("input", () => { ev.note = noteTa.value; edit("n:" + ev.id); });
   trackRt(noteTa);
   const resetPos = h("button", { type: "button", class: "link" }, t("resetPos"));
-  resetPos.addEventListener("click", () => { ev.dx = ev.dy = ev.ldx = ev.ldy = ev.ndx = ev.ndy = ev.tdx = ev.tdy = ev.adx = ev.ady = 0; ev.bw = ev.bh = 0; edit(); renderList(); });
+  resetPos.addEventListener("click", () => { ev.dx = ev.dy = ev.ldx = ev.ldy = ev.ndx = ev.ndy = ev.tdx = ev.tdy = ev.adx = ev.ady = 0; edit(); });
 
   // style details
   const lab = h("input", { type: "text", value: ev.labelOverride, placeholder: "Day 2" });
@@ -374,11 +377,6 @@ function buildRow(ev: EventItem, idx: number): HTMLElement {
     const v = parseFloat(sw.value);
     if (isFinite(v)) { ev.style.strokeWidthPt = v; edit("w:" + ev.id); }
   });
-  const sizeIn = (key: "bw" | "bh") => {
-    const i = h("input", { type: "number", step: 4, min: 0, value: String(ev[key]), placeholder: "auto" });
-    i.addEventListener("input", () => { const v = parseFloat(i.value); ev[key] = isFinite(v) && v > 0 ? v : 0; edit("sz:" + key + ev.id); });
-    return i;
-  };
   const dashed = h("input", { type: "checkbox", checked: ev.style.dashed ?? project.settings.box.dashed });
   dashed.addEventListener("change", () => { ev.style.dashed = dashed.checked; edit(); });
   const shape = h("select", {}, ...(["rounded", "rect", "none"] as const).map((v) =>
@@ -410,7 +408,6 @@ function buildRow(ev: EventItem, idx: number): HTMLElement {
         field(t("fill"), fill), swatches,
         field(t("stroke"), stroke),
         field(t("strokeWidth"), sw),
-        field(t("boxW"), sizeIn("bw")), field(t("boxH"), sizeIn("bh")),
         h("label", { class: "fld chk" }, dashed, h("span", {}, t("dashed"))),
         field(t("shape"), shape),
         reset, resetPos))
@@ -550,6 +547,97 @@ function buildTsvDialog(): HTMLDialogElement {
 }
 function openTsv(): void { tsvDialog.showModal(); }
 
+// ---------- file library (saved in this browser) ----------
+function curEntry() {
+  const id = getCurrent();
+  return id ? listLib().find((e) => e.id === id) ?? null : null;
+}
+function updateCurName(): void {
+  if (curFileEl) curFileEl.textContent = curEntry()?.name ?? "";
+}
+function saveToLib(asNew: boolean, name?: string): boolean {
+  const cur = asNew ? null : curEntry();
+  const nm = name ?? cur?.name ?? "";
+  if (!nm.trim()) return false;
+  const e = saveLib(nm, JSON.stringify(project), cur?.id ?? null);
+  if (!e) { alert(t("libFail")); return false; }
+  setCurrent(e.id);
+  updateCurName();
+  return true;
+}
+function buildLibDialog(): HTMLDialogElement {
+  const body = h("div", { class: "libbody" });
+  const nameIn = h("input", { type: "text", placeholder: t("libName") });
+  const render = () => {
+    const cur = curEntry();
+    if (document.activeElement !== nameIn) nameIn.value = cur?.name ?? nameIn.value;
+    const list = listLib();
+    body.replaceChildren(...(list.length ? list.map((e) => {
+      const open = btn(t("libOpen"), () => {
+        let p;
+        try { p = parseProject(e.json); } catch { alert(t("libFail")); return; }
+        project = p;
+        selectedId = null;
+        setCurrent(e.id);
+        hist.commit(project);
+        renderAll();
+        libDialog.close();
+      }, "primary");
+      const ren = btn(t("libRename"), () => {
+        const n = prompt(t("libName"), e.name);
+        if (n && n.trim()) { renameLib(e.id, n); updateCurName(); render(); }
+      });
+      const del = btn(t("delete"), () => {
+        if (!confirm(t("libConfirmDelete") + " " + e.name)) return;
+        deleteLib(e.id);
+        if (getCurrent() === e.id) setCurrent(null);
+        updateCurName();
+        render();
+      }, "danger");
+      return h("div", { class: "libitem" + (cur?.id === e.id ? " cur" : "") },
+        h("span", { class: "n" }, e.name), h("span", { class: "d" }, new Date(e.updated).toLocaleString()), open, ren, del);
+    }) : [h("p", { class: "hint" }, t("libEmpty"))]));
+  };
+  const saveNew = btn(t("libSaveNew"), () => { if (saveToLib(true, nameIn.value)) render(); });
+  const overwrite = btn(t("libOverwrite"), () => { if (saveToLib(false, nameIn.value)) render(); }, "primary");
+  const dlg = h("dialog", { class: "dlg" },
+    h("h2", {}, t("libTitle")), h("p", { class: "hint" }, t("libHelp")),
+    h("div", { class: "row-actions" }, nameIn, overwrite, saveNew),
+    body,
+    h("div", { class: "row-actions" }, btn(t("tsvCancel"), () => dlg.close())));
+  (dlg as unknown as { _render: () => void })._render = render;
+  return dlg;
+}
+function openLib(): void {
+  (libDialog as unknown as { _render: () => void })._render();
+  libDialog.showModal();
+}
+
+// ---------- PDF (vector, via the browser's print-to-PDF) ----------
+async function exportPdf(): Promise<void> {
+  const font = outlineFont ?? (await loadBundledFont());
+  if (font) {
+    outlineFont = font;
+    setMeasurer((text, px) => font.advance(text, px));
+  }
+  let svg: string;
+  try { svg = buildSvg(project, font ? { font } : {}); } finally { useCanvasMeasurer(); }
+  const wm = /width="([\d.]+)mm"/.exec(svg)?.[1], hm = /height="([\d.]+)mm"/.exec(svg)?.[1];
+  const page = wm && hm ? `${wm}mm ${hm}mm` : "auto";
+  const doc = `<!doctype html><html><head><meta charset="utf-8"><title>${(curEntry()?.name ?? "timeline").replace(/[<>&]/g, "")}</title><style>@page{size:${page};margin:0}html,body{margin:0;padding:0;background:#fff}svg{display:block}</style></head><body>${svg}</body></html>`;
+  const f = document.createElement("iframe");
+  f.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+  f.srcdoc = doc;
+  f.onload = () => {
+    const w = f.contentWindow;
+    if (!w) return;
+    w.addEventListener("afterprint", () => setTimeout(() => f.remove(), 500));
+    w.focus();
+    w.print();
+  };
+  document.body.append(f);
+}
+
 function buildTemplateSelect(): HTMLElement {
   const sel = h("select", { class: "tplsel" }, h("option", { value: "" }, t("templatePick")),
     ...templates(getLang()).map((x) => h("option", { value: x.id }, x.name)));
@@ -685,6 +773,8 @@ function renderAll(): void {
   warnEl = h("div", { class: "warn" });
   listEl = h("div", { class: "list" });
   tsvDialog = buildTsvDialog();
+  libDialog = buildLibDialog();
+  curFileEl = h("span", { class: "curfile" });
 
   const addBtn = btn(t("addEvent"), () => {
     const maxT = project.events.length ? Math.max(...project.events.map((e) => e.t)) : -1;
@@ -707,6 +797,7 @@ function renderAll(): void {
       h("div", { class: "actions" },
         undoBtn, redoBtn,
         h("span", { class: "sep" }),
+        btn(t("libOpenBtn"), openLib), curFileEl,
         btn(t("saveJson"), () => download("timeline.json", "application/json", JSON.stringify(project, null, 2))),
         btn(t("loadJson"), () => fileIn.click()), fileIn,
         btn(t("reset"), () => {
@@ -719,6 +810,7 @@ function renderAll(): void {
         h("span", { class: "sep" }),
         btn(t("exportText"), () => download("timeline.svg", "image/svg+xml", buildSvg(project)), "primary"),
         btn(t("exportOutline"), () => void exportOutline(), "primary"),
+        btn(t("exportPdf"), () => void exportPdf(), "primary"),
         h("label", { class: "lang" }, t("lang") + " ", langSel))),
     h("main", {},
       h("aside", { class: "panel" },
@@ -733,7 +825,7 @@ function renderAll(): void {
         buildCategories(),
         buildBreaks(),
         buildSettings(),
-        tsvDialog),
+        tsvDialog, libDialog),
       h("section", { class: "stage" },
         previewEl, warnEl,
         h("p", { class: "hint" }, t("dragHint")),
@@ -747,6 +839,11 @@ setLang(detectLang());
 renderAll();
 
 window.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "s") {
+    e.preventDefault();
+    if (!saveToLib(false)) openLib();
+    return;
+  }
   const tag = (e.target as HTMLElement).tagName;
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
   if ((e.key === "Delete" || e.key === "Backspace") && selectedFree) {

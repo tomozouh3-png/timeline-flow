@@ -107,23 +107,28 @@ test("axis extend lengthens the arrow; export has no handles", () => {
   assert.ok(svg.includes('fill="none"'));
 });
 
-test("box size override and period arrow length", () => {
+test("period arrow length", () => {
   const p = sampleProject("ja");
-  p.events[0].bw = 200; p.events[0].bh = 90;
-  const it = layout(p).items.find((i) => i.ev === p.events[0])!;
-  assert.equal(it.box.w, 200);
-  assert.equal(it.box.h, 90);
   p.periods.push({ id: "p1", start: 0, end: 3, text: "x", category: "", fill: "" });
   p.settings.period.endShape = "arrow"; p.settings.period.arrowLen = 30;
   assert.ok(buildSvg(p).includes("polygon"));
 });
 
-test("manual box size is a minimum; text still forces growth", () => {
-  const p = sampleProject("ja");
-  p.events[0].text = "とても長い文字列がここに入ります。".repeat(3);
-  const auto = layout(p).items.find((i) => i.ev === p.events[0])!.box.w;
-  p.events[0].bw = 20;
-  assert.equal(layout(p).items.find((i) => i.ev === p.events[0])!.box.w, auto);
-  p.events[0].bw = auto + 50;
-  assert.equal(layout(p).items.find((i) => i.ev === p.events[0])!.box.w, auto + 50);
+
+import { listLib, saveLib, renameLib, deleteLib } from "../src/library.ts";
+test("library saves, overwrites, renames and deletes", () => {
+  const m = new Map<string, string>();
+  const kv = { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v) };
+  const a = saveLib("A", "{}", null, kv, 1000)!;
+  const b = saveLib("B", "{}", null, kv, 2000)!;
+  assert.deepEqual(listLib(kv).map((e) => e.name), ["B", "A"]);
+  saveLib("A2", '{"x":1}', a.id, kv, 3000);
+  const l = listLib(kv);
+  assert.equal(l.length, 2);
+  assert.equal(l[0].name, "A2");
+  assert.equal(l[0].json, '{"x":1}');
+  renameLib(b.id, "Bee", kv);
+  assert.ok(listLib(kv).some((e) => e.name === "Bee"));
+  deleteLib(a.id, kv);
+  assert.equal(listLib(kv).length, 1);
 });

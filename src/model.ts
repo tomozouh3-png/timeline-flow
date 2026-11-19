@@ -23,8 +23,6 @@ export interface EventItem {
   ldy: number;
   ndx: number; // note offset
   ndy: number;
-  bw: number; // box width override in px (0 = automatic)
-  bh: number; // box height override in px (0 = automatic)
   tdx: number; // arrow tip (axis end) offset from its default position on the axis
   tdy: number;
   adx: number; // arrow box-side end offset from its default attachment point
@@ -169,7 +167,7 @@ export function uid(): string {
 }
 
 export function newEvent(t: number, text = ""): EventItem {
-  return { id: uid(), t, text, labelOverride: "", side: "auto", category: "", note: "", dx: 0, dy: 0, ldx: 0, ldy: 0, ndx: 0, ndy: 0, bw: 0, bh: 0, tdx: 0, tdy: 0, adx: 0, ady: 0, style: {} };
+  return { id: uid(), t, text, labelOverride: "", side: "auto", category: "", note: "", dx: 0, dy: 0, ldx: 0, ldy: 0, ndx: 0, ndy: 0, tdx: 0, tdy: 0, adx: 0, ady: 0, style: {} };
 }
 
 export function newText(x: number, y: number, text = ""): FreeText {
@@ -243,7 +241,7 @@ export function parseProject(json: string): Project {
       category: typeof o.category === "string" ? o.category : "",
       note: typeof o.note === "string" ? o.note : "",
       dx: numOr(o.dx), dy: numOr(o.dy), ldx: numOr(o.ldx), ldy: numOr(o.ldy), ndx: numOr(o.ndx), ndy: numOr(o.ndy),
-      bw: numOr(o.bw), bh: numOr(o.bh), tdx: numOr(o.tdx), tdy: numOr(o.tdy), adx: numOr(o.adx), ady: numOr(o.ady),
+      tdx: numOr(o.tdx), tdy: numOr(o.tdy), adx: numOr(o.adx), ady: numOr(o.ady),
       style: isObj(o.style) ? (o.style as Partial<BoxStyle>) : {},
     };
   });

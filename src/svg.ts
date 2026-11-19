@@ -129,10 +129,6 @@ function itemSvg(ctx: Ctx, p: Project, sc: Scene, it: ItemLayout, idx: number, p
       .join("")
   );
   parts.push(`<g id="${id}-box"${part("box")}>${box.join("")}</g>`);
-  if (preview) {
-    const outerY = b.y + b.h / 2 > sc.axisY ? b.y + b.h : b.y;
-    parts.push(`<g class="handles"><rect data-part="resize" class="rz" x="${num(b.x + b.w - 6)}" y="${num(outerY - 6)}" width="12" height="12"/></g>`);
-  }
 
   // note (free text just outside the box)
   if (it.note) {
