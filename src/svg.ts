@@ -129,6 +129,10 @@ function itemSvg(ctx: Ctx, p: Project, sc: Scene, it: ItemLayout, idx: number, p
       .join("")
   );
   parts.push(`<g id="${id}-box"${part("box")}>${box.join("")}</g>`);
+  if (preview) {
+    const outerY = b.y + b.h / 2 > sc.axisY ? b.y + b.h : b.y;
+    parts.push(`<g class="handles"><rect data-part="resize" class="rz" x="${num(b.x + b.w - 6)}" y="${num(outerY - 6)}" width="12" height="12"/></g>`);
+  }
 
   // note (free text just outside the box)
   if (it.note) {
@@ -143,7 +147,7 @@ function periodSvg(ctx: Ctx, p: Project, sc: Scene, q: PeriodLayout, idx: number
   const shape = p.settings.period.endShape;
   let body: string;
   if (shape === "arrow") {
-    const ah = Math.min(h * 0.6, (x1 - x0) / 2);
+    const ah = Math.min(p.settings.period.arrowLen > 0 ? p.settings.period.arrowLen : h * 0.6, (x1 - x0) / 2);
     body = `<polygon points="${num(x0)},${num(y)} ${num(x1 - ah)},${num(y)} ${num(x1)},${num(y + h / 2)} ${num(x1 - ah)},${num(y + h)} ${num(x0)},${num(y + h)}" fill="${q.fill}" stroke="${q.stroke}" stroke-width="${sw}" stroke-linejoin="round"${preview ? ' pointer-events="all"' : ""}/>`;
   } else {
     const r = shape === "round" ? h / 2 : 0;
@@ -156,7 +160,8 @@ function periodSvg(ctx: Ctx, p: Project, sc: Scene, q: PeriodLayout, idx: number
       : textLine(ctx, q.runs, x1 + 6, by, sc.lfs, "start")
     : "";
   const pa = preview ? ` data-period="${q.p.id}" data-part="period"` : "";
-  return `<g id="period-${idx + 1}"${pa}>${body}${text}</g>`;
+  const ahd = preview && shape === "arrow" ? `<circle class="axis-handle" data-part="arrowLen" data-ah="${num(Math.min(p.settings.period.arrowLen > 0 ? p.settings.period.arrowLen : h * 0.6, (x1 - x0) / 2))}" cx="${num(x1 - Math.min(p.settings.period.arrowLen > 0 ? p.settings.period.arrowLen : h * 0.6, (x1 - x0) / 2))}" cy="${num(y + h / 2)}" r="6"/>` : "";
+  return `<g id="period-${idx + 1}"${pa}>${body}${text}</g>${ahd}`;
 }
 
 export function buildSvg(p: Project, opts: { preview?: boolean; scene?: Scene; font?: OutlineFont | null; freeHint?: string } = {}): string {

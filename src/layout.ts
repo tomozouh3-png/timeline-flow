@@ -147,6 +147,10 @@ export function layout(p: Project): Scene {
     const hm = Math.max(0, ...preps.map((q) => q.h));
     for (const q of preps) q.h = hm;
   }
+  for (const q of preps) {
+    if (q.ev.bw > 0) q.w = q.ev.bw;
+    if (q.ev.bh > 0) q.h = q.ev.bh;
+  }
 
   const n = preps.length;
   const periods = p.periods.filter((q) => isFinite(q.start) && isFinite(q.end)).map((q) => ({ ...q, start: Math.min(q.start, q.end), end: Math.max(q.start, q.end) }));

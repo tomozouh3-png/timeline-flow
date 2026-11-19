@@ -86,5 +86,7 @@ summary { cursor: pointer; color: var(--muted); padding: 2px 0; }
 
 #preview .axis-handle { fill: transparent; cursor: ew-resize; }
 #preview .axis-handle:hover { fill: rgba(37, 99, 235, 0.3); }
+#preview .rz { fill: transparent; stroke: #2563eb; stroke-width: 1.5; cursor: nwse-resize; }
+#preview .rz:hover { fill: rgba(37, 99, 235, 0.3); }
 .clr { display: inline-flex; align-items: center; gap: 4px; }
 .clr .none { font-size: 11px; display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; }

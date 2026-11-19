@@ -2,7 +2,7 @@ import { newText } from "./model.ts";
 import type { EventItem, FreeText, Period, Project } from "./model.ts";
 import type { Scene } from "./layout.ts";
 
-type Part = "box" | "label" | "note" | "free" | "period" | "tip" | "attach";
+type Part = "box" | "label" | "note" | "free" | "period" | "tip" | "attach" | "resize";
 
 export interface InteractCtx {
   host: HTMLElement; // positioned container of the preview (holds the svg host and the inline editor)
@@ -112,14 +112,17 @@ export function setupInteractions(ctx: InteractCtx): Interact {
     return ev ? { part, id: ev.getAttribute("data-ev")! } : null;
   };
 
-  let axisDrag: { pointer: number; startX: number; start: number; moved: boolean } | null = null;
+  let axisDrag: { pointer: number; startX: number; start: number; moved: boolean; kind: "axis" | "arrow" } | null = null;
   host.addEventListener("pointerdown", (e) => {
     if (e.button !== 0 || (e.target as Element).closest(".inline-edit")) return;
-    if ((e.target as Element).closest('[data-part="axisEnd"]')) {
+    const ah = (e.target as Element).closest('[data-part="axisEnd"], [data-part="arrowLen"]');
+    if (ah) {
       const pt0 = toSvg(e);
       if (!pt0) return;
       ctx.selectEvent(null); ctx.selectFree(null);
-      axisDrag = { pointer: e.pointerId, startX: pt0.x, start: Number(ctx.project().settings.axis.extend) || 0, moved: false };
+      const kind = ah.getAttribute("data-part") === "arrowLen" ? "arrow" : "axis";
+      const start = kind === "arrow" ? parseFloat(ah.getAttribute("data-ah") || "0") : Number(ctx.project().settings.axis.extend) || 0;
+      axisDrag = { pointer: e.pointerId, startX: pt0.x, start, moved: false, kind };
       e.preventDefault();
       return;
     }
@@ -139,7 +142,8 @@ export function setupInteractions(ctx: InteractCtx): Interact {
     else {
       const ev = findEvent(tg.id);
       if (!ev) return;
-      [a, b] = tg.part === "box" ? [ev.dx, ev.dy] : tg.part === "label" ? [ev.ldx, ev.ldy] : tg.part === "tip" ? [ev.tdx, ev.tdy] : tg.part === "attach" ? [ev.adx, ev.ady] : [ev.ndx, ev.ndy];
+      if (tg.part === "resize") { const it = ctx.scene().items.find((x) => x.ev.id === tg.id); if (!it) return; [a, b] = [it.box.w, it.box.h]; }
+      else [a, b] = tg.part === "box" ? [ev.dx, ev.dy] : tg.part === "label" ? [ev.ldx, ev.ldy] : tg.part === "tip" ? [ev.tdx, ev.tdy] : tg.part === "attach" ? [ev.adx, ev.ady] : [ev.ndx, ev.ndy];
     }
     drag = { part: tg.part, id: tg.id, pointer: e.pointerId, startX: pt.x, startRelY: pt.y - ctx.scene().axisY, cx: e.clientX, cy: e.clientY, a, b, moved: false };
     e.preventDefault(); // no text selection while dragging
@@ -154,6 +158,12 @@ export function setupInteractions(ctx: InteractCtx): Interact {
       axisDrag.moved = true;
       const sc = ctx.scene();
       const p = ctx.project();
+      if (axisDrag.kind === "arrow") {
+        p.settings.period.arrowLen = Math.max(2, Math.min(200, Math.round(axisDrag.start - (pt.x - axisDrag.startX))));
+        ctx.refresh();
+        ctx.syncLists();
+        return;
+      }
       const v = Math.round(axisDrag.start + pt.x - axisDrag.startX);
       p.settings.axis.extend = Math.max(-10, Math.min(v, Math.round(sc.W - 2 - (sc.axisEndX - (Number(p.settings.axis.extend) || 0)))));
       ctx.refresh();
@@ -180,6 +190,12 @@ export function setupInteractions(ctx: InteractCtx): Interact {
       if (!ev) return;
       if (drag.part === "box") { ev.dx = r(drag.a + dx); ev.dy = r(drag.b + dy); }
       else if (drag.part === "label") { ev.ldx = r(drag.a + dx); ev.ldy = r(drag.b + dy); }
+      else if (drag.part === "resize") {
+        const it = ctx.scene().items.find((x) => x.ev.id === drag!.id);
+        const below = it ? it.box.y + it.box.h / 2 > ctx.scene().axisY : true;
+        ev.bw = Math.max(20, Math.round(drag.a + 2 * dx));
+        ev.bh = Math.max(12, Math.round(drag.b + (below ? dy : -dy)));
+      }
       else if (drag.part === "tip") { ev.tdx = r(drag.a + dx); ev.tdy = r(drag.b + dy); }
       else if (drag.part === "attach") { ev.adx = r(drag.a + dx); ev.ady = r(drag.b + dy); }
       else { ev.ndx = r(drag.a + dx); ev.ndy = r(drag.b + dy); }
@@ -336,8 +352,10 @@ export function setupInteractions(ctx: InteractCtx): Interact {
   host.addEventListener("dblclick", (e) => {
     if ((e.target as Element).closest(".inline-edit")) return;
     const under = document.elementFromPoint(e.clientX, e.clientY) ?? (e.target as Element);
+    if (under.closest('[data-part="arrowLen"]')) { ctx.project().settings.period.arrowLen = 0; ctx.edit(); ctx.syncLists(); return; }
     if (under.closest('[data-part="axisEnd"]')) { ctx.project().settings.axis.extend = 0; ctx.edit(); ctx.syncLists(); return; }
     const tg = targetOf(under);
+    if (tg && tg.part === "resize") { const ev = findEvent(tg.id); if (ev) { ev.bw = ev.bh = 0; ctx.edit(); } return; }
     if (tg && (tg.part === "tip" || tg.part === "attach")) { // double-click a handle: back to the default position
       const ev = findEvent(tg.id);
       if (ev) { if (tg.part === "tip") ev.tdx = ev.tdy = 0; else ev.adx = ev.ady = 0; ctx.edit(); }

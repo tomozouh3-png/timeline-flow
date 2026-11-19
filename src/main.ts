@@ -249,6 +249,7 @@ function buildSettings(): HTMLElement {
       selIn("period.position", t("periodPos"), [["bottom", t("posBottom")], ["top", t("posTop")]]),
       numIn("period.height", t("periodHeight"), 1, 6),
       selIn("period.endShape", t("endShape"), [["square", t("shapeSquare")], ["round", t("shapeRound")], ["arrow", t("shapeArrow")]]),
+      numIn("period.arrowLen", t("arrowLen"), 1, 0),
       colIn("period.fill", t("fill"), true),
       colIn("period.stroke", t("stroke"), true)
     ),
@@ -359,7 +360,7 @@ function buildRow(ev: EventItem, idx: number): HTMLElement {
   noteTa.addEventListener("input", () => { ev.note = noteTa.value; edit("n:" + ev.id); });
   trackRt(noteTa);
   const resetPos = h("button", { type: "button", class: "link" }, t("resetPos"));
-  resetPos.addEventListener("click", () => { ev.dx = ev.dy = ev.ldx = ev.ldy = ev.ndx = ev.ndy = ev.tdx = ev.tdy = ev.adx = ev.ady = 0; edit(); });
+  resetPos.addEventListener("click", () => { ev.dx = ev.dy = ev.ldx = ev.ldy = ev.ndx = ev.ndy = ev.tdx = ev.tdy = ev.adx = ev.ady = 0; ev.bw = ev.bh = 0; edit(); renderList(); });
 
   // style details
   const lab = h("input", { type: "text", value: ev.labelOverride, placeholder: "Day 2" });
@@ -373,6 +374,11 @@ function buildRow(ev: EventItem, idx: number): HTMLElement {
     const v = parseFloat(sw.value);
     if (isFinite(v)) { ev.style.strokeWidthPt = v; edit("w:" + ev.id); }
   });
+  const sizeIn = (key: "bw" | "bh") => {
+    const i = h("input", { type: "number", step: 4, min: 0, value: String(ev[key]), placeholder: "auto" });
+    i.addEventListener("input", () => { const v = parseFloat(i.value); ev[key] = isFinite(v) && v > 0 ? v : 0; edit("sz:" + key + ev.id); });
+    return i;
+  };
   const dashed = h("input", { type: "checkbox", checked: ev.style.dashed ?? project.settings.box.dashed });
   dashed.addEventListener("change", () => { ev.style.dashed = dashed.checked; edit(); });
   const shape = h("select", {}, ...(["rounded", "rect", "none"] as const).map((v) =>
@@ -404,6 +410,7 @@ function buildRow(ev: EventItem, idx: number): HTMLElement {
         field(t("fill"), fill), swatches,
         field(t("stroke"), stroke),
         field(t("strokeWidth"), sw),
+        field(t("boxW"), sizeIn("bw")), field(t("boxH"), sizeIn("bh")),
         h("label", { class: "fld chk" }, dashed, h("span", {}, t("dashed"))),
         field(t("shape"), shape),
         reset, resetPos))
@@ -595,6 +602,8 @@ async function exportOutline(): Promise<void> {
 function syncLists(): void {
   const ax = document.querySelector<HTMLInputElement>('input[data-path="axis.extend"]');
   if (ax && ax !== document.activeElement) ax.value = String(project.settings.axis.extend);
+  const al = document.querySelector<HTMLInputElement>('input[data-path="period.arrowLen"]');
+  if (al && al !== document.activeElement) al.value = String(project.settings.period.arrowLen);
   for (const row of listEl.querySelectorAll<HTMLElement>(".ev")) {
     const ev = project.events.find((e) => e.id === row.dataset.id);
     if (!ev) continue;

@@ -106,3 +106,14 @@ test("axis extend lengthens the arrow; export has no handles", () => {
   assert.ok(!svg.includes("axis-handle") && !svg.includes("pointer-events"));
   assert.ok(svg.includes('fill="none"'));
 });
+
+test("box size override and period arrow length", () => {
+  const p = sampleProject("ja");
+  p.events[0].bw = 200; p.events[0].bh = 90;
+  const it = layout(p).items.find((i) => i.ev === p.events[0])!;
+  assert.equal(it.box.w, 200);
+  assert.equal(it.box.h, 90);
+  p.periods.push({ id: "p1", start: 0, end: 3, text: "x", category: "", fill: "" });
+  p.settings.period.endShape = "arrow"; p.settings.period.arrowLen = 30;
+  assert.ok(buildSvg(p).includes("polygon"));
+});
