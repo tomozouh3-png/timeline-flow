@@ -39,6 +39,28 @@ function toggleMarker(ta: HTMLTextAreaElement, m: string): void {
   }
   ta.dispatchEvent(new Event("input"));
 }
+/** Change the font size of the selection by `step` px; adjusts an existing {±n}…{/} wrapper if present. */
+function adjustSize(ta: HTMLTextAreaElement, step: number): void {
+  const a = ta.selectionStart, b = ta.selectionEnd, v = ta.value;
+  const before = /\{([+-]\d+(?:\.\d+)?)\}$/.exec(v.slice(0, a));
+  if (before && v.slice(b, b + 3) === "{/}") {
+    const n = parseFloat(before[1]) + step;
+    const tag = n === 0 ? "" : `{${n > 0 ? "+" : ""}${n}}`;
+    const start = a - before[0].length;
+    if (n === 0) {
+      ta.value = v.slice(0, start) + v.slice(a, b) + v.slice(b + 3);
+      ta.setSelectionRange(start, start + (b - a));
+    } else {
+      ta.value = v.slice(0, start) + tag + v.slice(a, b) + v.slice(b);
+      ta.setSelectionRange(start + tag.length, start + tag.length + (b - a));
+    }
+  } else {
+    const tag = `{${step > 0 ? "+" : ""}${step}}`;
+    ta.value = v.slice(0, a) + tag + v.slice(a, b) + "{/}" + v.slice(b);
+    ta.setSelectionRange(a + tag.length, b + tag.length);
+  }
+  ta.dispatchEvent(new Event("input"));
+}
 function insertAtCursor(ta: HTMLTextAreaElement, s: string): void {
   const a = ta.selectionStart, b = ta.selectionEnd;
   ta.value = ta.value.slice(0, a) + s + ta.value.slice(b);
@@ -199,6 +221,11 @@ export function setupInteractions(ctx: InteractCtx): Interact {
         toggleMarker(ta, k === "b" ? "**" : k === "i" ? "*" : k === "." ? "^" : "~");
         return;
       }
+      if (mod && !e.altKey && (e.key === "]" || e.key === "[")) {
+        e.preventDefault();
+        adjustSize(ta, e.key === "]" ? 1 : -1);
+        return;
+      }
       if (e.key === "Escape" || ((e.metaKey || e.ctrlKey) && e.key === "Enter")) { e.preventDefault(); stopEdit(); }
     });
     ta.addEventListener("blur", () => stopEdit());
@@ -219,6 +246,8 @@ export function setupInteractions(ctx: InteractCtx): Interact {
     btn("I", "Italic (Ctrl/⌘+I)", () => toggleMarker(ta, "*"), "i");
     btn("x²", "Superscript (Ctrl/⌘+.)", () => toggleMarker(ta, "^"));
     btn("x₂", "Subscript (Ctrl/⌘+,)", () => toggleMarker(ta, "~"));
+    btn("A⁺", "Larger (Ctrl/⌘+])", () => adjustSize(ta, 1));
+    btn("A⁻", "Smaller (Ctrl/⌘+[)", () => adjustSize(ta, -1));
     const sep = document.createElement("span");
     sep.className = "sep";
     bar.append(sep);

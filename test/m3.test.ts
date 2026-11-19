@@ -87,3 +87,11 @@ test("arrow tip and attach point can be offset independently", () => {
   assert.ok(!buildSvg(p).includes("handle"));
   assert.ok(buildSvg(p, { preview: true }).includes('data-part="tip"'));
 });
+
+import { parseLine as parseLineSize, runFontPx as fpx } from "../src/richtext.ts";
+test("size tags", () => {
+  const r = parseLineSize("a{+3}b{/}c\\{+1}");
+  assert.deepEqual(r.map((x) => [x.text, x.size ?? 0]), [["a", 0], ["b", 3], ["c{+1}", 0]]);
+  assert.equal(fpx(r[1], 10), 13);
+  assert.equal(fpx(parseLineSize("{-50}x{/}")[0], 10), 4);
+});
