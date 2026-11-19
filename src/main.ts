@@ -438,6 +438,7 @@ function categorySelect(current: string, onChange: (v: string) => void): HTMLSel
 function numField(obj: object, key: string, label: string, keyPrefix: string, step = 0.5): HTMLElement {
   const rec = obj as Record<string, number>;
   const i = h("input", { type: "number", step, value: String(rec[key]) });
+  i.dataset.k = keyPrefix + key;
   i.addEventListener("input", () => {
     const v = parseFloat(i.value);
     if (!isFinite(v)) return;
@@ -692,6 +693,12 @@ function syncLists(): void {
   if (ax && ax !== document.activeElement) ax.value = String(project.settings.axis.extend);
   const al = document.querySelector<HTMLInputElement>('input[data-path="period.arrowLen"]');
   if (al && al !== document.activeElement) al.value = String(project.settings.period.arrowLen);
+  for (const q of project.periods) {
+    for (const [pre, key] of [["ps:", "start"], ["pe:", "end"]] as const) {
+      const inp = document.querySelector<HTMLInputElement>(`input[data-k="${pre}${q.id}${key}"]`);
+      if (inp && inp !== document.activeElement) inp.value = String(q[key]);
+    }
+  }
   for (const row of listEl.querySelectorAll<HTMLElement>(".ev")) {
     const ev = project.events.find((e) => e.id === row.dataset.id);
     if (!ev) continue;

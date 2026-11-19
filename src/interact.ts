@@ -112,17 +112,18 @@ export function setupInteractions(ctx: InteractCtx): Interact {
     return ev ? { part, id: ev.getAttribute("data-ev")! } : null;
   };
 
-  let axisDrag: { pointer: number; startX: number; start: number; moved: boolean; kind: "axis" | "arrow" } | null = null;
+  let axisDrag: { pointer: number; startX: number; start: number; moved: boolean; kind: "axis" | "arrow" | "pstart" | "pend"; pid?: string } | null = null;
   host.addEventListener("pointerdown", (e) => {
     if (e.button !== 0 || (e.target as Element).closest(".inline-edit")) return;
-    const ah = (e.target as Element).closest('[data-part="axisEnd"], [data-part="arrowLen"]');
+    const ah = (e.target as Element).closest('[data-part="axisEnd"], [data-part="arrowLen"], [data-part="pstart"], [data-part="pend"]');
     if (ah) {
       const pt0 = toSvg(e);
       if (!pt0) return;
       ctx.selectEvent(null); ctx.selectFree(null);
-      const kind = ah.getAttribute("data-part") === "arrowLen" ? "arrow" : "axis";
+      const dp = ah.getAttribute("data-part");
+      const kind = dp === "arrowLen" ? "arrow" : dp === "pstart" ? "pstart" : dp === "pend" ? "pend" : "axis";
       const start = kind === "arrow" ? parseFloat(ah.getAttribute("data-ah") || "0") : Number(ctx.project().settings.axis.extend) || 0;
-      axisDrag = { pointer: e.pointerId, startX: pt0.x, start, moved: false, kind };
+      axisDrag = { pointer: e.pointerId, startX: pt0.x, start, moved: false, kind, pid: ah.getAttribute("data-period") ?? undefined };
       e.preventDefault();
       return;
     }
@@ -157,6 +158,24 @@ export function setupInteractions(ctx: InteractCtx): Interact {
       axisDrag.moved = true;
       const sc = ctx.scene();
       const p = ctx.project();
+      if (axisDrag.kind === "pstart" || axisDrag.kind === "pend") {
+        const prj = ctx.project();
+        const q = prj.periods.find((x) => x.id === axisDrag!.pid);
+        if (!q) return;
+        const isStart = axisDrag.kind === "pstart";
+        const lo0 = Math.min(q.start, q.end), hi0 = Math.max(q.start, q.end);
+        // keep the time range fixed while dragging (so the axis does not rescale under the pointer)
+        const others = [...prj.events.map((x) => x.t), ...prj.periods.filter((x) => x !== q).flatMap((x) => [x.start, x.end])];
+        const tMin = Math.min(lo0, ...others), tMax = Math.max(hi0, ...others);
+        let tv = sc.tOfX(pt.x);
+        for (const st of [...others, lo0, hi0]) if (Math.abs(sc.xOfT(st) - pt.x) < 6) { tv = st; break; }
+        tv = Math.round(tv * 10) / 10;
+        if (isStart) { q.start = Math.max(tMin, Math.min(tv, hi0)); q.end = hi0; }
+        else { q.end = Math.min(tMax, Math.max(tv, lo0)); q.start = lo0; }
+        ctx.refresh();
+        ctx.syncLists();
+        return;
+      }
       if (axisDrag.kind === "arrow") {
         p.settings.period.arrowLen = Math.max(2, Math.min(200, Math.round(axisDrag.start - (pt.x - axisDrag.startX))));
         ctx.refresh();

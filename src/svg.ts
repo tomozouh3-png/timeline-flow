@@ -157,7 +157,10 @@ function periodSvg(ctx: Ctx, p: Project, sc: Scene, q: PeriodLayout, idx: number
     : "";
   const pa = preview ? ` data-period="${q.p.id}" data-part="period"` : "";
   const ahd = preview && shape === "arrow" ? `<circle class="axis-handle" data-part="arrowLen" data-ah="${num(Math.min(p.settings.period.arrowLen > 0 ? p.settings.period.arrowLen : h * 0.6, (x1 - x0) / 2))}" cx="${num(x1 - Math.min(p.settings.period.arrowLen > 0 ? p.settings.period.arrowLen : h * 0.6, (x1 - x0) / 2))}" cy="${num(y + h / 2)}" r="6"/>` : "";
-  return `<g id="period-${idx + 1}"${pa}>${body}${text}</g>${ahd}`;
+  const edges = preview
+    ? ["start", "end"].map((k) => `<rect class="pedge" data-part="p${k}" data-period="${q.p.id}" x="${num((k === "start" ? x0 : x1) - 4)}" y="${num(y)}" width="8" height="${num(h)}"/>`).join("")
+    : "";
+  return `<g id="period-${idx + 1}"${pa}>${body}${text}</g>${ahd}${edges}`;
 }
 
 export function buildSvg(p: Project, opts: { preview?: boolean; scene?: Scene; font?: OutlineFont | null; freeHint?: string } = {}): string {

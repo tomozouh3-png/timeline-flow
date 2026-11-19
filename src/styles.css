@@ -95,3 +95,5 @@ summary { cursor: pointer; color: var(--muted); padding: 2px 0; }
 .libitem.cur { background: rgba(37, 99, 235, 0.08); }
 .libitem .n { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .libitem .d { font-size: 11px; color: var(--muted, #6b7280); }
+#preview .pedge { fill: transparent; cursor: ew-resize; }
+#preview .pedge:hover { fill: rgba(37, 99, 235, 0.3); }

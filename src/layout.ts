@@ -70,6 +70,8 @@ export interface Scene {
   legend: LegendItem[];
   texts: FreeLayout[];
   freeSpace: number;
+  xOfT(t: number): number; // time -> x
+  tOfX(x: number): number; // x -> time (within the current time range)
   swatchW: number;
   swatchH: number;
   fs: number;
@@ -404,6 +406,18 @@ export function layout(p: Project): Scene {
     W, H, axisY,
     axisStartX: MX,
     axisEndX: Math.max(res.xb + ext + (Number(s.axis.extend) || 0), MX + 10),
+    xOfT: (t: number) => res.mapT(t),
+    tOfX: (x: number) => {
+      let lo = tAllMin, hi = tAllMax;
+      if (hi <= lo) return lo;
+      if (x <= res.mapT(lo)) return lo;
+      if (x >= res.mapT(hi)) return hi;
+      for (let k = 0; k < 40; k++) {
+        const mid = (lo + hi) / 2;
+        if (res.mapT(mid) < x) lo = mid; else hi = mid;
+      }
+      return (lo + hi) / 2;
+    },
     breakXs, tickXs, items, periods: pl, legend, texts, freeSpace: Math.max(0, s.freeSpace), swatchW, swatchH,
     fs, lfs, lh, llh, labelGap: LABEL_GAP,
     warnings: items.filter((i) => i.overlap).length,

@@ -132,3 +132,13 @@ test("library saves, overwrites, renames and deletes", () => {
   deleteLib(a.id, kv);
   assert.equal(listLib(kv).length, 1);
 });
+
+test("tOfX inverts xOfT", () => {
+  const p = sampleProject("ja");
+  p.periods.push({ id: "p1", start: 0, end: 2, text: "", category: "", fill: "" });
+  const sc = layout(p);
+  for (const t of [0, 0.7, 1.5, 2]) assert.ok(Math.abs(sc.tOfX(sc.xOfT(t)) - t) < 1e-3);
+  p.settings.axis.mode = "equal";
+  const se = layout(p);
+  assert.ok(Math.abs(se.tOfX(se.xOfT(1)) - 1) < 0.05);
+});
