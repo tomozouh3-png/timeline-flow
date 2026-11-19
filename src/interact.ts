@@ -24,10 +24,31 @@ export interface Interact {
 }
 
 const DRAG_THRESHOLD = 3;
+const SPECIAL = ["µ", "°", "×", "±", "→", "Δ", "α", "β", "γ", "κ", "λ", "≥", "≤"];
+
+/** Toggle a markup marker around the selection (adds it, or removes it if already wrapped). */
+function toggleMarker(ta: HTMLTextAreaElement, m: string): void {
+  const a = ta.selectionStart, b = ta.selectionEnd, v = ta.value;
+  const wrapped = a >= m.length && v.slice(a - m.length, a) === m && v.slice(b, b + m.length) === m && !(m === "*" && (v[a - 2] === "*" || v[b + 1] === "*"));
+  if (wrapped) {
+    ta.value = v.slice(0, a - m.length) + v.slice(a, b) + v.slice(b + m.length);
+    ta.setSelectionRange(a - m.length, b - m.length);
+  } else {
+    ta.value = v.slice(0, a) + m + v.slice(a, b) + m + v.slice(b);
+    ta.setSelectionRange(a + m.length, b + m.length);
+  }
+  ta.dispatchEvent(new Event("input"));
+}
+function insertAtCursor(ta: HTMLTextAreaElement, s: string): void {
+  const a = ta.selectionStart, b = ta.selectionEnd;
+  ta.value = ta.value.slice(0, a) + s + ta.value.slice(b);
+  ta.setSelectionRange(a + s.length, a + s.length);
+  ta.dispatchEvent(new Event("input"));
+}
 
 export function setupInteractions(ctx: InteractCtx): Interact {
   const host = ctx.host;
-  let editor: { ta: HTMLTextAreaElement; sel: string; fontPx: () => number; part: Part; id: string } | null = null;
+  let editor: { ta: HTMLTextAreaElement; bar: HTMLElement; sel: string; fontPx: () => number; part: Part; id: string } | null = null;
 
   const svgEl = () => host.querySelector("svg") as SVGSVGElement | null;
   const toSvg = (e: { clientX: number; clientY: number }): { x: number; y: number } | null => {
@@ -171,11 +192,39 @@ export function setupInteractions(ctx: InteractCtx): Interact {
     });
     ta.addEventListener("keydown", (e) => {
       e.stopPropagation();
+      const mod = e.metaKey || e.ctrlKey;
+      const k = e.key.toLowerCase();
+      if (mod && !e.shiftKey && !e.altKey && (k === "b" || k === "i" || k === "." || k === ",")) {
+        e.preventDefault();
+        toggleMarker(ta, k === "b" ? "**" : k === "i" ? "*" : k === "." ? "^" : "~");
+        return;
+      }
       if (e.key === "Escape" || ((e.metaKey || e.ctrlKey) && e.key === "Enter")) { e.preventDefault(); stopEdit(); }
     });
     ta.addEventListener("blur", () => stopEdit());
-    host.append(ta);
-    editor = { ta, sel, fontPx, part, id };
+    const bar = document.createElement("div");
+    bar.className = "inline-bar";
+    const btn = (label: string, title: string, fn: () => void, cls = "") => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "tb " + cls;
+      b.textContent = label;
+      b.title = title;
+      b.addEventListener("mousedown", (e) => e.preventDefault()); // keep the selection and focus in the editor
+      b.addEventListener("click", () => { toggleFocus(); fn(); });
+      bar.append(b);
+    };
+    const toggleFocus = () => ta.focus();
+    btn("B", "Bold (Ctrl/⌘+B)", () => toggleMarker(ta, "**"), "b");
+    btn("I", "Italic (Ctrl/⌘+I)", () => toggleMarker(ta, "*"), "i");
+    btn("x²", "Superscript (Ctrl/⌘+.)", () => toggleMarker(ta, "^"));
+    btn("x₂", "Subscript (Ctrl/⌘+,)", () => toggleMarker(ta, "~"));
+    const sep = document.createElement("span");
+    sep.className = "sep";
+    bar.append(sep);
+    for (const c of SPECIAL) btn(c, c, () => insertAtCursor(ta, c));
+    host.append(bar, ta);
+    editor = { ta, bar, sel, fontPx, part, id };
     positionEditor();
     ta.focus();
     ta.select();
@@ -183,9 +232,10 @@ export function setupInteractions(ctx: InteractCtx): Interact {
 
   function stopEdit(): void {
     if (!editor) return;
-    const { ta, part, id } = editor;
+    const { ta, bar, part, id } = editor;
     editor = null;
     ta.remove();
+    bar.remove();
     if (part === "free") {
       const f = findFree(id);
       if (f && !f.text.trim()) {
@@ -215,8 +265,13 @@ export function setupInteractions(ctx: InteractCtx): Interact {
     s.fontSize = `${fpx}px`;
     s.width = `${w}px`;
     s.height = `${h}px`;
-    s.left = `${r.left - hr.left + host.scrollLeft + r.width / 2 - w / 2}px`;
-    s.top = `${r.top - hr.top + host.scrollTop + r.height / 2 - h / 2}px`;
+    const left = Math.max(2, r.left - hr.left + host.scrollLeft + r.width / 2 - w / 2);
+    s.left = `${left}px`;
+    const top = r.top - hr.top + host.scrollTop + r.height / 2 - h / 2;
+    s.top = `${top}px`;
+    const bs = editor.bar.style;
+    bs.left = s.left;
+    bs.top = `${top - 34 >= 2 ? top - 34 : top + h + 4}px`; // above the editor, or below it when there is no room
   }
 
   host.addEventListener("dblclick", (e) => {

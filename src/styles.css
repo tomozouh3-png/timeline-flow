@@ -80,3 +80,6 @@ summary { cursor: pointer; color: var(--muted); padding: 2px 0; }
 #preview .handle { fill: transparent; cursor: crosshair; }
 #preview .dot { fill: #fff; stroke: #2563eb; stroke-width: 1.5; pointer-events: none; }
 #preview .handle:hover + .dot { fill: #2563eb; }
+
+.inline-bar { position: absolute; z-index: 4; display: flex; flex-wrap: wrap; align-items: center; gap: 3px; padding: 3px 4px; max-width: min(360px, 96%); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.18); }
+.inline-bar .tb { padding: 1px 6px; min-width: 24px; }
