@@ -343,7 +343,7 @@ function buildRow(ev: EventItem, idx: number): HTMLElement {
   noteTa.addEventListener("input", () => { ev.note = noteTa.value; edit("n:" + ev.id); });
   trackRt(noteTa);
   const resetPos = h("button", { type: "button", class: "link" }, t("resetPos"));
-  resetPos.addEventListener("click", () => { ev.dx = ev.dy = ev.ldx = ev.ldy = ev.ndx = ev.ndy = 0; edit(); });
+  resetPos.addEventListener("click", () => { ev.dx = ev.dy = ev.ldx = ev.ldy = ev.ndx = ev.ndy = ev.tdx = ev.tdy = ev.adx = ev.ady = 0; edit(); });
 
   // style details
   const lab = h("input", { type: "text", value: ev.labelOverride, placeholder: "Day 2" });

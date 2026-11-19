@@ -26,6 +26,8 @@ export interface ItemLayout {
   textLines: Run[][];
   label: TextBlock;
   note: TextBlock | null;
+  tip: { x: number; y: number }; // arrow end on the axis side (default: on the axis at the event time)
+  attach: { x: number; y: number }; // arrow end on the box side
   overlap: boolean;
 }
 
@@ -340,7 +342,14 @@ export function layout(p: Project): Scene {
         h: q.noteH,
       };
     }
-    return { ev, x: pp.x, side: pp.side, tier: pp.tier, style: q.style, box, textLines: q.textLines, label, note, overlap: pp.overlap };
+    const m = Math.min(8, box.w / 2);
+    const boxBelow = box.y + box.h / 2 > axisY;
+    const attach = {
+      x: Math.min(Math.max(pp.x, box.x + m), box.x + box.w - m) + ev.adx,
+      y: (boxBelow ? box.y : box.y + box.h) + ev.ady,
+    };
+    const tip = { x: pp.x + ev.tdx, y: axisY + ev.tdy };
+    return { ev, x: pp.x, side: pp.side, tier: pp.tier, style: q.style, box, textLines: q.textLines, label, note, tip, attach, overlap: pp.overlap };
   });
 
   // free texts (x absolute, y relative to the axis) are laid out after the vertical shift below
@@ -364,6 +373,8 @@ export function layout(p: Project): Scene {
     maxY += shift;
     for (const it of items) {
       it.box.y += shift;
+      it.tip.y += shift;
+      it.attach.y += shift;
       it.label.top += shift;
       if (it.note) it.note.top += shift;
     }

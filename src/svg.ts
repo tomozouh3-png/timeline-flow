@@ -92,21 +92,17 @@ function itemSvg(ctx: Ctx, p: Project, sc: Scene, it: ItemLayout, idx: number, p
   // time label
   parts.push(`<g id="${id}-label"${part("label")}>${hitRect(preview, it.label)}${blockSvg(ctx, it.label, sc.llh, sc.lfs)}</g>`);
 
-  // connector: from the axis position to the box edge (slanted when the box has been moved sideways)
+  // connector: tip (axis side) -> attach (box side); both ends can be moved by hand
   if (s.connector.style !== "none") {
-    const b = it.box;
-    const boxBelow = b.y + b.h / 2 > sc.axisY;
-    const edgeY = boxBelow ? b.y : b.y + b.h;
-    const m = Math.min(8, b.w / 2);
-    const ax = Math.min(Math.max(it.x, b.x + m), b.x + b.w - m);
-    const axis = { x: it.x, y: sc.axisY };
-    const edge = { x: ax, y: edgeY };
     const size = Math.max(5, cw * 4);
     const toAxis = s.connector.style === "toAxis";
-    const hd = toAxis ? arrowHead(axis, edge, size, ccolor) : arrowHead(edge, axis, size, ccolor);
-    const from = toAxis ? edge : axis;
+    const hd = toAxis ? arrowHead(it.tip, it.attach, size, ccolor) : arrowHead(it.attach, it.tip, size, ccolor);
+    const from = toAxis ? it.attach : it.tip;
+    const handles = preview
+      ? `<g class="handles"><circle data-part="tip" class="handle" cx="${num(it.tip.x)}" cy="${num(it.tip.y)}" r="9"/><circle class="dot" cx="${num(it.tip.x)}" cy="${num(it.tip.y)}" r="3.5"/><circle data-part="attach" class="handle" cx="${num(it.attach.x)}" cy="${num(it.attach.y)}" r="9"/><circle class="dot" cx="${num(it.attach.x)}" cy="${num(it.attach.y)}" r="3.5"/></g>`
+      : "";
     parts.push(
-      `<g id="${id}-connector"><g stroke="${ccolor}" stroke-width="${num(cw)}" fill="none"><line x1="${num(from.x)}" y1="${num(from.y)}" x2="${num(hd.base.x)}" y2="${num(hd.base.y)}"/></g>${hd.head}</g>`
+      `<g id="${id}-connector"><g stroke="${ccolor}" stroke-width="${num(cw)}" fill="none"><line x1="${num(from.x)}" y1="${num(from.y)}" x2="${num(hd.base.x)}" y2="${num(hd.base.y)}"/></g>${hd.head}${handles}</g>`
     );
   }
 

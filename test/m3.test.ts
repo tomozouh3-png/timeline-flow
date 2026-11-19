@@ -73,3 +73,17 @@ test("new fields round-trip and old files load", () => {
   assert.deepEqual(q.texts, []);
   assert.equal(q.events[0].dx, 0);
 });
+
+test("arrow tip and attach point can be offset independently", () => {
+  const p = sampleProject();
+  const a = layout(p).items[1];
+  p.events[1].tdx = 25;
+  p.events[1].tdy = -10;
+  p.events[1].adx = -7;
+  const b = layout(p).items[1];
+  assert.ok(Math.abs(b.tip.x - a.tip.x - 25) < 1e-6 && Math.abs(b.tip.y - a.tip.y + 10) < 1e-6);
+  assert.ok(Math.abs(b.attach.x - a.attach.x + 7) < 1e-6);
+  assert.ok(Math.abs(b.x - a.x) < 1e-6, "time position unchanged");
+  assert.ok(!buildSvg(p).includes("handle"));
+  assert.ok(buildSvg(p, { preview: true }).includes('data-part="tip"'));
+});

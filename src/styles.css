@@ -74,3 +74,9 @@ summary { cursor: pointer; color: var(--muted); padding: 2px 0; }
 #preview [data-part]:hover > rect.hit { stroke: #93c5fd; stroke-width: 1; stroke-dasharray: 3 3; }
 .inline-edit { position: absolute; z-index: 3; resize: none; text-align: center; background: #fff; color: #111; border: 2px solid var(--accent); border-radius: 6px; padding: 4px; line-height: 1.35; font-family: inherit; box-shadow: 0 4px 14px rgba(0,0,0,.18); }
 .ta-note { margin-top: 4px; }
+
+#preview .handles { display: none; }
+#preview .tl-sel .handles { display: inline; }
+#preview .handle { fill: transparent; cursor: crosshair; }
+#preview .dot { fill: #fff; stroke: #2563eb; stroke-width: 1.5; pointer-events: none; }
+#preview .handle:hover + .dot { fill: #2563eb; }

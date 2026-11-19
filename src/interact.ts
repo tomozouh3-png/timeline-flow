@@ -2,7 +2,7 @@ import { newText } from "./model.ts";
 import type { EventItem, FreeText, Period, Project } from "./model.ts";
 import type { Scene } from "./layout.ts";
 
-type Part = "box" | "label" | "note" | "free" | "period";
+type Part = "box" | "label" | "note" | "free" | "period" | "tip" | "attach";
 
 export interface InteractCtx {
   host: HTMLElement; // positioned container of the preview (holds the svg host and the inline editor)
@@ -87,7 +87,7 @@ export function setupInteractions(ctx: InteractCtx): Interact {
     else {
       const ev = findEvent(tg.id);
       if (!ev) return;
-      [a, b] = tg.part === "box" ? [ev.dx, ev.dy] : tg.part === "label" ? [ev.ldx, ev.ldy] : [ev.ndx, ev.ndy];
+      [a, b] = tg.part === "box" ? [ev.dx, ev.dy] : tg.part === "label" ? [ev.ldx, ev.ldy] : tg.part === "tip" ? [ev.tdx, ev.tdy] : tg.part === "attach" ? [ev.adx, ev.ady] : [ev.ndx, ev.ndy];
     }
     drag = { part: tg.part, id: tg.id, pointer: e.pointerId, startX: pt.x, startRelY: pt.y - ctx.scene().axisY, cx: e.clientX, cy: e.clientY, a, b, moved: false };
     e.preventDefault(); // no text selection while dragging
@@ -114,6 +114,8 @@ export function setupInteractions(ctx: InteractCtx): Interact {
       if (!ev) return;
       if (drag.part === "box") { ev.dx = r(drag.a + dx); ev.dy = r(drag.b + dy); }
       else if (drag.part === "label") { ev.ldx = r(drag.a + dx); ev.ldy = r(drag.b + dy); }
+      else if (drag.part === "tip") { ev.tdx = r(drag.a + dx); ev.tdy = r(drag.b + dy); }
+      else if (drag.part === "attach") { ev.adx = r(drag.a + dx); ev.ady = r(drag.b + dy); }
       else { ev.ndx = r(drag.a + dx); ev.ndy = r(drag.b + dy); }
     }
     ctx.refresh();
@@ -221,6 +223,11 @@ export function setupInteractions(ctx: InteractCtx): Interact {
     if ((e.target as Element).closest(".inline-edit")) return;
     const under = document.elementFromPoint(e.clientX, e.clientY) ?? (e.target as Element);
     const tg = targetOf(under);
+    if (tg && (tg.part === "tip" || tg.part === "attach")) { // double-click a handle: back to the default position
+      const ev = findEvent(tg.id);
+      if (ev) { if (tg.part === "tip") ev.tdx = ev.tdy = 0; else ev.adx = ev.ady = 0; ctx.edit(); }
+      return;
+    }
     if (tg) { startEdit(tg.part, tg.id); return; }
     if (!svgEl()?.contains(under) && under !== host && !under.classList.contains("svghost")) return;
     // empty area: add a free text here
