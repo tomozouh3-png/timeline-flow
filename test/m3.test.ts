@@ -95,3 +95,14 @@ test("size tags", () => {
   assert.equal(fpx(r[1], 10), 13);
   assert.equal(fpx(parseLineSize("{-50}x{/}")[0], 10), 4);
 });
+
+test("axis extend lengthens the arrow; export has no handles", () => {
+  const p = sampleProject("ja");
+  const a = layout(p).axisEndX;
+  p.settings.axis.extend = 40;
+  assert.equal(layout(p).axisEndX, a + 40);
+  p.settings.box.fill = "none";
+  const svg = buildSvg(p);
+  assert.ok(!svg.includes("axis-handle") && !svg.includes("pointer-events"));
+  assert.ok(svg.includes('fill="none"'));
+});

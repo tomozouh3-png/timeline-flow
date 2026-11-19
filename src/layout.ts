@@ -403,7 +403,7 @@ export function layout(p: Project): Scene {
   return {
     W, H, axisY,
     axisStartX: MX,
-    axisEndX: res.xb + ext,
+    axisEndX: Math.max(res.xb + ext + (Number(s.axis.extend) || 0), MX + 10),
     breakXs, tickXs, items, periods: pl, legend, texts, freeSpace: Math.max(0, s.freeSpace), swatchW, swatchH,
     fs, lfs, lh, llh, labelGap: LABEL_GAP,
     warnings: items.filter((i) => i.overlap).length,

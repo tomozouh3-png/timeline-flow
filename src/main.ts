@@ -135,6 +135,7 @@ function setPath(path: string, v: unknown): void {
 
 function numIn(path: string, label: string, step = 1, min = 0): HTMLElement {
   const i = h("input", { type: "number", step, min, value: String(getPath(path)) });
+  i.dataset.path = path;
   i.addEventListener("input", () => {
     const v = parseFloat(i.value);
     if (!isFinite(v)) return;
@@ -153,7 +154,21 @@ function chkIn(path: string, label: string): HTMLElement {
   c.addEventListener("change", () => { setPath(path, c.checked); edit(); });
   return h("label", { class: "fld chk" }, c, h("span", {}, label));
 }
-function colIn(path: string, label: string): HTMLElement {
+/** Colour picker with a "transparent" checkbox (stored as "none"). `fallback` is the colour restored when transparency is switched off. */
+function clrPick(value: string, fallback: string, onChange: (v: string) => void): HTMLElement {
+  const none = value === "none";
+  const c = h("input", { type: "color", value: none ? fallback : value || fallback });
+  const n = h("input", { type: "checkbox", checked: none });
+  c.disabled = none;
+  c.addEventListener("input", () => onChange(c.value));
+  n.addEventListener("change", () => { c.disabled = n.checked; onChange(n.checked ? "none" : c.value); });
+  return h("span", { class: "clr" }, c, h("label", { class: "none" }, n, t("transparent")));
+}
+function colIn(path: string, label: string, canNone = false): HTMLElement {
+  if (canNone) {
+    const cur = String(getPath(path));
+    return field(label, clrPick(cur, cur === "none" ? "#ffffff" : cur, (v) => { setPath(path, v); edit("s:" + path); }));
+  }
   const c = h("input", { type: "color", value: String(getPath(path)) });
   c.addEventListener("input", () => { setPath(path, c.value); edit("s:" + path); });
   return field(label, c);
@@ -203,6 +218,7 @@ function buildSettings(): HTMLElement {
       selIn("axis.mode", t("mode"), [["proportional", t("modeProportional")], ["equal", t("modeEqual")]]),
       selIn("axis.ticks", t("ticks"), [["none", t("ticksNone")], ["events", t("ticksEvents")], ["unit", t("ticksUnit")]]),
       chkIn("axis.arrow", t("arrow")),
+      numIn("axis.extend", t("axisExtend"), 4, -10),
       numIn("axis.widthPt", t("axisWidth"), 0.25, 0.25),
       colIn("axis.color", t("axisColor"))
     ),
@@ -214,8 +230,8 @@ function buildSettings(): HTMLElement {
       dateHint
     ),
     group(t("gBox"), false,
-      colIn("box.fill", t("fill")),
-      colIn("box.stroke", t("stroke")),
+      colIn("box.fill", t("fill"), true),
+      colIn("box.stroke", t("stroke"), true),
       numIn("box.strokeWidthPt", t("strokeWidth"), 0.25, 0),
       chkIn("box.dashed", t("dashed")),
       selIn("box.shape", t("shape"), [["rounded", t("shapeRounded")], ["rect", t("shapeRect")], ["none", t("shapeNone")]]),
@@ -233,8 +249,8 @@ function buildSettings(): HTMLElement {
       selIn("period.position", t("periodPos"), [["bottom", t("posBottom")], ["top", t("posTop")]]),
       numIn("period.height", t("periodHeight"), 1, 6),
       selIn("period.endShape", t("endShape"), [["square", t("shapeSquare")], ["round", t("shapeRound")], ["arrow", t("shapeArrow")]]),
-      colIn("period.fill", t("fill")),
-      colIn("period.stroke", t("stroke"))
+      colIn("period.fill", t("fill"), true),
+      colIn("period.stroke", t("stroke"), true)
     ),
     group(t("gConn"), false,
       selIn("connector.style", t("connStyle"), [["toAxis", t("connToAxis")], ["toBox", t("connToBox")], ["none", t("connNone")]]),
@@ -350,10 +366,8 @@ function buildRow(ev: EventItem, idx: number): HTMLElement {
   lab.addEventListener("input", () => { ev.labelOverride = lab.value; edit("l:" + ev.id); });
   trackRt(lab);
 
-  const fill = h("input", { type: "color", value: ev.style.fill ?? project.settings.box.fill });
-  fill.addEventListener("input", () => { ev.style.fill = fill.value; edit("f:" + ev.id); });
-  const stroke = h("input", { type: "color", value: ev.style.stroke ?? project.settings.box.stroke });
-  stroke.addEventListener("input", () => { ev.style.stroke = stroke.value; edit("c:" + ev.id); });
+  const fill = clrPick(ev.style.fill ?? project.settings.box.fill, "#ffffff", (v) => { ev.style.fill = v; edit("f:" + ev.id); });
+  const stroke = clrPick(ev.style.stroke ?? project.settings.box.stroke, "#1e293b", (v) => { ev.style.stroke = v; edit("c:" + ev.id); });
   const sw = h("input", { type: "number", step: 0.25, min: 0, value: String(ev.style.strokeWidthPt ?? project.settings.box.strokeWidthPt) });
   sw.addEventListener("input", () => {
     const v = parseFloat(sw.value);
@@ -366,7 +380,7 @@ function buildRow(ev: EventItem, idx: number): HTMLElement {
   shape.addEventListener("change", () => { ev.style.shape = shape.value as "rounded"; edit(); });
   const swatches = h("div", { class: "swatches" }, ...PRESETS.map((c) => {
     const b = h("button", { type: "button", class: "sw", title: c, style: `background:${c}` });
-    b.addEventListener("click", () => { ev.style.fill = c; fill.value = c; edit(); });
+    b.addEventListener("click", () => { ev.style.fill = c; edit(); renderList(); });
     return b;
   }));
   const reset = h("button", { type: "button", class: "link" }, t("resetStyle"));
@@ -445,8 +459,7 @@ function buildPeriods(): HTMLElement {
       text.addEventListener("input", () => { q.text = text.value; edit("pt:" + q.id); });
       trackRt(text);
       const cat = categorySelect(q.category, (v) => { q.category = v; edit(); });
-      const fill = h("input", { type: "color", value: q.fill || project.settings.period.fill });
-      fill.addEventListener("input", () => { q.fill = fill.value; edit("pf:" + q.id); });
+      const fill = clrPick(q.fill || project.settings.period.fill, "#fde68a", (v) => { q.fill = v; edit("pf:" + q.id); });
       const del = h("button", { type: "button", class: "ico danger", title: t("delete") }, "✕");
       del.addEventListener("click", () => { project.periods = project.periods.filter((x) => x !== q); edit(); box.replaceChildren(...[]); (box as unknown as { _render: () => void })._render(); });
       return h("div", { class: "ev" },
@@ -472,10 +485,8 @@ function buildCategories(): HTMLElement {
         edit("cn:" + c.id);
       });
       trackRt(name);
-      const fill = h("input", { type: "color", value: c.fill });
-      fill.addEventListener("input", () => { c.fill = fill.value; edit("cf:" + c.id); });
-      const stroke = h("input", { type: "color", value: c.stroke });
-      stroke.addEventListener("input", () => { c.stroke = stroke.value; edit("cs:" + c.id); });
+      const fill = clrPick(c.fill, "#dbeafe", (v) => { c.fill = v; edit("cf:" + c.id); });
+      const stroke = clrPick(c.stroke, "#1d4ed8", (v) => { c.stroke = v; edit("cs:" + c.id); });
       const del = h("button", { type: "button", class: "ico danger", title: t("delete") }, "✕");
       del.addEventListener("click", () => {
         project.categories = project.categories.filter((x) => x !== c);
@@ -582,6 +593,8 @@ async function exportOutline(): Promise<void> {
 
 // ---------- free texts ----------
 function syncLists(): void {
+  const ax = document.querySelector<HTMLInputElement>('input[data-path="axis.extend"]');
+  if (ax && ax !== document.activeElement) ax.value = String(project.settings.axis.extend);
   for (const row of listEl.querySelectorAll<HTMLElement>(".ev")) {
     const ev = project.events.find((e) => e.id === row.dataset.id);
     if (!ev) continue;

@@ -71,6 +71,7 @@ export interface Settings {
     customUnit: string;
     mode: "proportional" | "equal";
     arrow: boolean;
+    extend: number; // extra axis length (px) beyond the last point; can be negative
     widthPt: number;
     color: string;
     ticks: "none" | "events" | "unit";
@@ -129,6 +130,7 @@ export function defaultSettings(): Settings {
       customUnit: "",
       mode: "proportional",
       arrow: true,
+      extend: 0,
       widthPt: 1.25,
       color: "#111111",
       ticks: "none",

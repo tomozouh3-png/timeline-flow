@@ -114,7 +114,7 @@ function itemSvg(ctx: Ctx, p: Project, sc: Scene, it: ItemLayout, idx: number, p
     const r = st.shape === "rounded" ? Math.min(st.radius, b.w / 2, b.h / 2) : 0;
     const dash = st.dashed ? ` stroke-dasharray="${num(4 * PT)} ${num(3 * PT)}"` : "";
     box.push(
-      `<rect class="box" x="${num(b.x)}" y="${num(b.y)}" width="${num(b.w)}" height="${num(b.h)}" rx="${num(r)}" ry="${num(r)}" fill="${st.fill}" stroke="${st.stroke}" stroke-width="${num(st.strokeWidthPt * PT)}"${dash}/>`
+      `<rect class="box" x="${num(b.x)}" y="${num(b.y)}" width="${num(b.w)}" height="${num(b.h)}" rx="${num(r)}" ry="${num(r)}" fill="${st.fill}" stroke="${st.stroke}" stroke-width="${num(st.strokeWidthPt * PT)}"${dash}${preview ? ' pointer-events="all"' : ""}/>`
     );
   } else if (preview) {
     box.push(`<rect class="box" x="${num(b.x)}" y="${num(b.y)}" width="${num(b.w)}" height="${num(b.h)}" fill="none" stroke="none" pointer-events="all"/>`);
@@ -144,10 +144,10 @@ function periodSvg(ctx: Ctx, p: Project, sc: Scene, q: PeriodLayout, idx: number
   let body: string;
   if (shape === "arrow") {
     const ah = Math.min(h * 0.6, (x1 - x0) / 2);
-    body = `<polygon points="${num(x0)},${num(y)} ${num(x1 - ah)},${num(y)} ${num(x1)},${num(y + h / 2)} ${num(x1 - ah)},${num(y + h)} ${num(x0)},${num(y + h)}" fill="${q.fill}" stroke="${q.stroke}" stroke-width="${sw}" stroke-linejoin="round"/>`;
+    body = `<polygon points="${num(x0)},${num(y)} ${num(x1 - ah)},${num(y)} ${num(x1)},${num(y + h / 2)} ${num(x1 - ah)},${num(y + h)} ${num(x0)},${num(y + h)}" fill="${q.fill}" stroke="${q.stroke}" stroke-width="${sw}" stroke-linejoin="round"${preview ? ' pointer-events="all"' : ""}/>`;
   } else {
     const r = shape === "round" ? h / 2 : 0;
-    body = `<rect x="${num(x0)}" y="${num(y)}" width="${num(x1 - x0)}" height="${num(h)}" rx="${num(r)}" ry="${num(r)}" fill="${q.fill}" stroke="${q.stroke}" stroke-width="${sw}"/>`;
+    body = `<rect x="${num(x0)}" y="${num(y)}" width="${num(x1 - x0)}" height="${num(h)}" rx="${num(r)}" ry="${num(r)}" fill="${q.fill}" stroke="${q.stroke}" stroke-width="${sw}"${preview ? ' pointer-events="all"' : ""}/>`;
   }
   const by = baseline(y, sc.lfs, h);
   const text = q.runs.length
@@ -189,6 +189,9 @@ export function buildSvg(p: Project, opts: { preview?: boolean; scene?: Scene; f
     axis.push(
       `<polygon points="${num(sc.axisEndX)},${num(sc.axisY)} ${num(lineEnd)},${num(sc.axisY - hw)} ${num(lineEnd)},${num(sc.axisY + hw)}" fill="${ac}"/>`
     );
+  }
+  if (preview) {
+    axis.push(`<circle class="axis-handle" data-part="axisEnd" cx="${num(sc.axisEndX)}" cy="${num(sc.axisY)}" r="9"/>`);
   }
   for (const x of sc.tickXs) {
     axis.push(`<line x1="${num(x)}" y1="${num(sc.axisY - 4)}" x2="${num(x)}" y2="${num(sc.axisY + 4)}" stroke="${ac}" stroke-width="${num(aw)}"/>`);

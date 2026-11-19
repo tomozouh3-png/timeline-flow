@@ -112,8 +112,17 @@ export function setupInteractions(ctx: InteractCtx): Interact {
     return ev ? { part, id: ev.getAttribute("data-ev")! } : null;
   };
 
+  let axisDrag: { pointer: number; startX: number; start: number; moved: boolean } | null = null;
   host.addEventListener("pointerdown", (e) => {
     if (e.button !== 0 || (e.target as Element).closest(".inline-edit")) return;
+    if ((e.target as Element).closest('[data-part="axisEnd"]')) {
+      const pt0 = toSvg(e);
+      if (!pt0) return;
+      ctx.selectEvent(null); ctx.selectFree(null);
+      axisDrag = { pointer: e.pointerId, startX: pt0.x, start: Number(ctx.project().settings.axis.extend) || 0, moved: false };
+      e.preventDefault();
+      return;
+    }
     const tg = targetOf(e.target as Element);
     if (!tg) {
       ctx.selectEvent(null);
@@ -137,6 +146,20 @@ export function setupInteractions(ctx: InteractCtx): Interact {
   });
 
   host.addEventListener("pointermove", (e) => {
+    if (axisDrag && e.pointerId === axisDrag.pointer) {
+      const pt = toSvg(e);
+      if (!pt) return;
+      if (!axisDrag.moved && Math.abs(pt.x - axisDrag.startX) < DRAG_THRESHOLD) return;
+      if (!axisDrag.moved) { try { host.setPointerCapture(e.pointerId); } catch { /* ignore */ } }
+      axisDrag.moved = true;
+      const sc = ctx.scene();
+      const p = ctx.project();
+      const v = Math.round(axisDrag.start + pt.x - axisDrag.startX);
+      p.settings.axis.extend = Math.max(-10, Math.min(v, Math.round(sc.W - 2 - (sc.axisEndX - (Number(p.settings.axis.extend) || 0)))));
+      ctx.refresh();
+      ctx.syncLists();
+      return;
+    }
     if (!drag || e.pointerId !== drag.pointer) return;
     if (!drag.moved && Math.hypot(e.clientX - drag.cx, e.clientY - drag.cy) < DRAG_THRESHOLD) return;
     if (!drag.moved) { try { host.setPointerCapture(e.pointerId); } catch { /* ignore */ } } // capture only once it is a real drag, so clicks keep their natural target
@@ -165,6 +188,13 @@ export function setupInteractions(ctx: InteractCtx): Interact {
   });
 
   const endDrag = (e: PointerEvent) => {
+    if (axisDrag && e.pointerId === axisDrag.pointer) {
+      const moved = axisDrag.moved;
+      axisDrag = null;
+      try { host.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+      if (moved) ctx.commit("drag");
+      return;
+    }
     if (!drag || e.pointerId !== drag.pointer) return;
     const moved = drag.moved;
     drag = null;
@@ -306,6 +336,7 @@ export function setupInteractions(ctx: InteractCtx): Interact {
   host.addEventListener("dblclick", (e) => {
     if ((e.target as Element).closest(".inline-edit")) return;
     const under = document.elementFromPoint(e.clientX, e.clientY) ?? (e.target as Element);
+    if (under.closest('[data-part="axisEnd"]')) { ctx.project().settings.axis.extend = 0; ctx.edit(); ctx.syncLists(); return; }
     const tg = targetOf(under);
     if (tg && (tg.part === "tip" || tg.part === "attach")) { // double-click a handle: back to the default position
       const ev = findEvent(tg.id);
