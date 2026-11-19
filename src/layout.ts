@@ -148,8 +148,8 @@ export function layout(p: Project): Scene {
     for (const q of preps) q.h = hm;
   }
   for (const q of preps) {
-    if (q.ev.bw > 0) q.w = q.ev.bw;
-    if (q.ev.bh > 0) q.h = q.ev.bh;
+    if (q.ev.bw > 0) q.w = Math.max(q.w, q.ev.bw); // a manual size is a minimum: the box still grows to fit its text
+    if (q.ev.bh > 0) q.h = Math.max(q.h, q.ev.bh);
   }
 
   const n = preps.length;

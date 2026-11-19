@@ -117,3 +117,13 @@ test("box size override and period arrow length", () => {
   p.settings.period.endShape = "arrow"; p.settings.period.arrowLen = 30;
   assert.ok(buildSvg(p).includes("polygon"));
 });
+
+test("manual box size is a minimum; text still forces growth", () => {
+  const p = sampleProject("ja");
+  p.events[0].text = "とても長い文字列がここに入ります。".repeat(3);
+  const auto = layout(p).items.find((i) => i.ev === p.events[0])!.box.w;
+  p.events[0].bw = 20;
+  assert.equal(layout(p).items.find((i) => i.ev === p.events[0])!.box.w, auto);
+  p.events[0].bw = auto + 50;
+  assert.equal(layout(p).items.find((i) => i.ev === p.events[0])!.box.w, auto + 50);
+});
